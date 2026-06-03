@@ -1,8 +1,5 @@
-// DOM layer: a thin renderer over the tested model in src/. No game logic lives
-// here — it reads tournament state through the view-model and writes back
-// through Tournament methods, persisting to localStorage on every change.
-
 import { Tournament } from './src/tournament.js';
+import { SCHEDULES } from './src/schedule.js';
 import {
   currentPhase,
   standingsView,
@@ -10,14 +7,15 @@ import {
   confirmedRounds,
 } from './src/viewmodel.js';
 
+const PLAYER_COUNTS = Object.keys(SCHEDULES).map(Number).sort((a, b) => a - b);
+
 const STORAGE_KEY = 'whist-tourny-v1';
 
-// -- state ------------------------------------------------------------------
 let t = load() ?? new Tournament();
-let tab = 'seating'; // sub-view: 'seating' | 'entry' | 'standings' | 'rounds'
+let tab = 'seating';
 let selectedSeat = null;
-let editRoundIdx = null; // which confirmed round is open in the editor
-let editSeat = null; // which entrant within that round is being edited
+let editRoundIdx = null;
+let editSeat = null;
 
 function load() {
   try {
@@ -32,11 +30,9 @@ function save() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(t.toJSON()));
   } catch {
-    /* storage full / disabled — the in-memory model still works */
   }
 }
 
-// -- helpers ----------------------------------------------------------------
 const esc = (s) =>
   String(s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
@@ -56,10 +52,8 @@ function commit(fn) {
   render();
 }
 
-// -- render -----------------------------------------------------------------
 function render() {
   const phase = currentPhase(t);
-  // Keep the active tab valid for the current phase.
   if (phase === 'finished' && tab !== 'rounds') tab = 'standings';
   if (phase === 'round' && !['seating', 'entry', 'standings', 'rounds'].includes(tab)) {
     tab = 'seating';
@@ -76,9 +70,10 @@ function render() {
 
 function renderStatus(phase) {
   const s = $('#status');
-  if (phase === 'setup') s.textContent = `Sign-up — ${t.entrants.length} / 12`;
+  const cfg = t.config;
+  if (phase === 'setup') s.textContent = `Sign-up — ${t.entrants.length} / ${cfg.seatCount}`;
   else if (phase === 'finished') s.textContent = `Finished — ${t.results.length} rounds played`;
-  else s.textContent = `Round ${t.currentRound + 1} of 11`;
+  else s.textContent = `Round ${t.currentRound + 1} of ${cfg.roundCount}`;
 }
 
 function renderNav(phase) {
@@ -107,8 +102,8 @@ function renderFooter() {
     <input type="file" id="import-file" accept="application/json" hidden />`;
 }
 
-// -- setup ------------------------------------------------------------------
 function setupView() {
+  const cfg = t.config;
   const seats = t.entrants
     .map(
       (e, i) => `<li>
@@ -125,8 +120,22 @@ function setupView() {
         `<input type="text" class="tname" data-i="${i}" value="${esc(n)}" placeholder="Table ${i + 1}" />`
     )
     .join('');
+  const formatPick = PLAYER_COUNTS.map((c) => {
+    const cc = SCHEDULES[c];
+    const byes = cc.byesByRound[0].length;
+    const sub = byes ? `${cc.roundCount} rounds · ${byes} sit out/round` : `${cc.roundCount} rounds · no byes`;
+    return `<button class="card format-opt ${t.playerCount === c ? 'selected' : ''}" data-players="${c}">
+      <div class="format-n">${c} players</div>
+      <div class="muted">${sub}</div>
+    </button>`;
+  }).join('');
   return `
     <h2>Set up the tournament</h2>
+    <div class="card" style="margin-bottom:0.75rem;">
+      <h3>Format</h3>
+      <div class="cards format-pick" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));">${formatPick}</div>
+      <p class="muted">3 tables every round; with more than 12 players, people take turns sitting out (byes), shared evenly.</p>
+    </div>
     <div class="cards" style="grid-template-columns: 1fr 1fr;">
       <div class="card">
         <h3>Name your tables</h3>
@@ -134,21 +143,20 @@ function setupView() {
         <p class="muted">These are the physical spots in the room. People are sent here so nobody gets stuck at one table.</p>
       </div>
       <div class="card">
-        <h3>Who's playing? (${t.entrants.length} / 12)</h3>
+        <h3>Who's playing? (${t.entrants.length} / ${cfg.seatCount})</h3>
         <form id="add-form" class="field">
           <input type="text" id="add-name" placeholder="Name (or 'Kenny&amp;Emily')" autocomplete="off" />
-          <button class="primary" type="submit" ${t.entrants.length >= 12 ? 'disabled' : ''}>Add</button>
+          <button class="primary" type="submit" ${t.entrants.length >= cfg.seatCount ? 'disabled' : ''}>Add</button>
         </form>
-        <p class="muted">More than 12 people? Combine some into one entrant — they share a seat &amp; score.</p>
+        <p class="muted">More than ${cfg.seatCount}? Combine some into one entrant — they share a seat &amp; score.</p>
         <ul class="seat-list">${seats}</ul>
-        <button class="primary" data-action="start" ${t.entrants.length === 12 ? '' : 'disabled'}>
+        <button class="primary" data-action="start" ${t.entrants.length === cfg.seatCount ? '' : 'disabled'}>
           Start tournament ▶
         </button>
       </div>
     </div>`;
 }
 
-// -- running ----------------------------------------------------------------
 function runningView() {
   if (tab === 'standings') return standingsTable(false);
   if (tab === 'rounds') return roundsView();
@@ -156,7 +164,6 @@ function runningView() {
   return seatingView();
 }
 
-// Two hand-input rows (points + Nello/Grand toggle), prefilled from `hands`.
 function handRows(hands) {
   const row = (i) => {
     const cur = hands?.[i] ?? { points: '', bid: 'nello' };
@@ -186,19 +193,26 @@ function seatingView() {
       </div>`;
     })
     .join('');
+  const byes = t.byeEntrants(t.currentRound);
+  const byeLine = byes.length
+    ? `<div class="remaining">Sitting out this round: ${byes.map((e) => esc(e.name)).join(', ')}</div>`
+    : '';
   return `
     <div class="toolbar">
       <h2 style="margin:0">Round ${t.currentRound + 1} — find your seat</h2>
       <span class="spacer"></span>
       <button class="primary" data-tab="entry">Enter scores ▶</button>
     </div>
+    ${byeLine}
     <div class="cards tables">${cards}</div>`;
 }
 
 function entryView() {
   const p = roundProgress(t);
   const entered = new Set(t.enteredSeats());
+  const playing = new Set(t.playingSeatsForRound(t.currentRound));
   const chips = t.entrants
+    .filter((e) => playing.has(e.seat))
     .map((e) => {
       const done = entered.has(e.seat);
       const sel = e.seat === selectedSeat ? 'selected' : '';
@@ -208,6 +222,11 @@ function entryView() {
       </button>`;
     })
     .join('');
+  const byes = t.byeEntrants(t.currentRound);
+  const byeLine = byes.length
+    ? `<div class="remaining">On bye this round (nothing to enter): ${byes.map((e) => esc(e.name)).join(', ')}</div>`
+    : '';
+  const showForm = selectedSeat && playing.has(selectedSeat);
   return `
     <div class="toolbar">
       <h2 style="margin:0">Round ${t.currentRound + 1} — enter your hands</h2>
@@ -218,8 +237,9 @@ function entryView() {
       </button>
     </div>
     ${p.remaining.length ? `<div class="remaining">Still need: ${p.remaining.map((e) => esc(e.name)).join(', ')}</div>` : ''}
+    ${byeLine}
     <div class="cards entrants" style="margin-top:1rem">${chips}</div>
-    ${selectedSeat ? entryForm(selectedSeat) : '<p class="muted" style="margin-top:1rem">Tap your name above to enter your two hands.</p>'}`;
+    ${showForm ? entryForm(selectedSeat) : '<p class="muted" style="margin-top:1rem">Tap your name above to enter your two hands.</p>'}`;
 }
 
 function entryForm(seat) {
@@ -232,7 +252,6 @@ function entryForm(seat) {
     </div>`;
 }
 
-// -- edit a past round ------------------------------------------------------
 function roundsView() {
   const rounds = confirmedRounds(t);
   if (!rounds.length) {
@@ -253,6 +272,12 @@ function roundsView() {
     const r = rounds[editRoundIdx];
     const chips = r.entries
       .map((e) => {
+        if (e.onBye) {
+          return `<div class="card chip is-bye">
+            <span>${esc(e.name)}</span>
+            <span class="muted">bye</span>
+          </div>`;
+        }
         const sel = e.seat === editSeat ? 'selected' : '';
         const bids = e.hands.map((h) => (h.bid === 'grand' ? 'G' : 'N')).join('/');
         return `<button class="card chip ${sel}" data-edit-seat="${e.seat}">
@@ -281,9 +306,9 @@ function editForm(roundIdx, seat) {
     </div>`;
 }
 
-// -- standings / finished ---------------------------------------------------
 function standingsTable(final) {
   const rows = standingsView(t);
+  const showByes = rows.some((r) => r.byes > 0);
   const body = rows
     .map(
       (r) => `<tr class="${r.isLeader && final ? 'leader' : ''}">
@@ -293,16 +318,17 @@ function standingsTable(final) {
         <td class="g">${r.grandsLabel}</td>
         <td class="n">${r.nellos}</td>
         <td class="muted">${r.roundsPlayed}</td>
+        ${showByes ? `<td class="muted byes ${r.byes === 0 ? 'no-bye' : ''}">${r.byes}</td>` : ''}
       </tr>`
     )
     .join('');
   return `
     <h2>${final ? 'Final standings' : 'Standings'}</h2>
     <table class="standings">
-      <thead><tr><th>#</th><th>Entrant</th><th>Pts</th><th>Grands</th><th>Nellos</th><th>Rounds</th></tr></thead>
+      <thead><tr><th>#</th><th>Entrant</th><th>Pts</th><th>Grands</th><th>Nellos</th><th>Rounds</th>${showByes ? '<th>Byes</th>' : ''}</tr></thead>
       <tbody>${body}</tbody>
     </table>
-    <p class="muted" style="margin-top:0.75rem">⚑ = tied on points, successful grands, and grands — settle it however you like.</p>`;
+    <p class="muted" style="margin-top:0.75rem">⚑ = tied on points, successful grands, and grands — settle it however you like.${showByes ? ' &nbsp;·&nbsp; <b>Byes</b> = rounds sat out; someone leading with 0 byes has played more hands than the rest.' : ''}</p>`;
 }
 
 function finishedView() {
@@ -315,9 +341,7 @@ function finishedView() {
   return banner + standingsTable(true);
 }
 
-// -- events -----------------------------------------------------------------
 function wire(phase) {
-  // Nav + cross-cutting actions via delegation on body (re-bound each render).
   $('#nav').onclick = (ev) => {
     const tabBtn = ev.target.closest('[data-tab]');
     if (tabBtn) { tab = tabBtn.dataset.tab; render(); }
@@ -337,6 +361,7 @@ function wire(phase) {
     const tabBtn = target.closest('[data-tab]');
     const seatBtn = target.closest('[data-seat]');
     const removeBtn = target.closest('[data-remove]');
+    const playersBtn = target.closest('[data-players]');
     const editRoundBtn = target.closest('[data-edit-round]');
     const editSeatBtn = target.closest('[data-edit-seat]');
 
@@ -345,11 +370,11 @@ function wire(phase) {
     else if (action === 'confirm') commit(() => { t.confirmRound(); tab = 'seating'; selectedSeat = null; });
     else if (action === 'save-entry') saveEntry();
     else if (action === 'save-edit') saveEdit();
+    else if (playersBtn) commit(() => t.setPlayerCount(Number(playersBtn.dataset.players)));
     else if (removeBtn) commit(() => t.entrants.splice(Number(removeBtn.dataset.remove), 1));
     else if (seatBtn) { selectedSeat = Number(seatBtn.dataset.seat); render(); }
     else if (editRoundBtn) { editRoundIdx = Number(editRoundBtn.dataset.editRound); editSeat = null; render(); }
     else if (editSeatBtn) { editSeat = Number(editSeatBtn.dataset.editSeat); render(); }
-    // bid toggle (don't re-render; just flip the on-state)
     const bidBtn = target.closest('.bid button');
     if (bidBtn) {
       const group = bidBtn.parentElement;
@@ -373,7 +398,6 @@ function wire(phase) {
   }
 }
 
-// Read the two {points, bid} hands out of a form element.
 function readHands(form) {
   return $$('.hand-row', form).map((row) => ({
     points: Number($('.pts', row).value),
@@ -387,7 +411,6 @@ function saveEntry() {
   const hands = readHands(form);
   commit(() => {
     t.recordEntrantRound(selectedSeat, hands);
-    // jump to the next entrant who still needs to enter
     const entered = new Set(t.enteredSeats());
     const next = t.entrants.find((e) => !entered.has(e.seat));
     selectedSeat = next ? next.seat : null;
@@ -400,11 +423,10 @@ function saveEdit() {
   const hands = readHands(form);
   commit(() => {
     t.editRound(editRoundIdx, editSeat, hands);
-    editSeat = null; // collapse the form; the chip shows the new total
+    editSeat = null;
   });
 }
 
-// -- backup / lifecycle -----------------------------------------------------
 function doExport() {
   const blob = new Blob([JSON.stringify(t.toJSON(), null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);

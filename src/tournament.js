@@ -1,11 +1,4 @@
-// Tournament state machine: setup -> running -> finished.
-//
-// Holds the roster and the per-round hand records, enforces the rules
-// (exactly 12 entrants, valid hands, complete rounds before advancing), and
-// derives seating + standings from the pure modules. All behavior is pinned by
-// spec/tournament.spec.js.
-
-import { ROUND_COUNT, SEAT_COUNT } from './schedule.js';
+import { scheduleFor, playingSeats, byeSeats } from './schedule.js';
 import { physicalSeating, assignmentForSeat } from './seating.js';
 import { computeStandings } from './standings.js';
 
@@ -26,29 +19,46 @@ function validateHands(hands) {
       throw new Error(`invalid bid: ${h.bid} (must be nello or grand)`);
     }
   }
-  // Normalize to plain hand objects.
   return hands.map((h) => ({ points: h.points, bid: h.bid }));
 }
 
 export class Tournament {
-  constructor() {
+  constructor(playerCount = 12) {
+    scheduleFor(playerCount);
+    this.playerCount = playerCount;
     this.status = 'setup';
-    this.entrants = []; // {seat, name}; seat assigned at start
+    this.entrants = [];
     this.tableNames = ['Table 1', 'Table 2', 'Table 3'];
-    this.currentRound = null; // 0-based index while running
-    this.results = []; // confirmed RoundResults: {hands:{seat:[h,h]}, edited?}
-    this.draft = null; // in-progress round: {hands:{seat:[h,h]}}
+    this.currentRound = null;
+    this.results = [];
+    this.draft = null;
   }
 
-  // -- setup ---------------------------------------------------------------
+  get config() {
+    return scheduleFor(this.playerCount);
+  }
+
+  setPlayerCount(playerCount) {
+    if (this.status !== 'setup') {
+      throw new Error('can only change player count during setup');
+    }
+    const cfg = scheduleFor(playerCount);
+    if (this.entrants.length > cfg.seatCount) {
+      throw new Error(
+        `already have ${this.entrants.length} entrants; remove some before switching to ${playerCount}`
+      );
+    }
+    this.playerCount = playerCount;
+  }
+
   addEntrant(name) {
     if (this.status !== 'setup') {
       throw new Error('can only add entrants during setup');
     }
     const trimmed = (name ?? '').trim();
     if (!trimmed) throw new Error('entrant name cannot be empty');
-    if (this.entrants.length >= SEAT_COUNT) {
-      throw new Error(`cannot add more than ${SEAT_COUNT} entrants`);
+    if (this.entrants.length >= this.config.seatCount) {
+      throw new Error(`cannot add more than ${this.config.seatCount} entrants`);
     }
     this.entrants.push({ seat: null, name: trimmed });
   }
@@ -69,8 +79,8 @@ export class Tournament {
 
   start() {
     if (this.status !== 'setup') throw new Error('tournament already started');
-    if (this.entrants.length !== SEAT_COUNT) {
-      throw new Error(`need exactly ${SEAT_COUNT} entrants to start`);
+    if (this.entrants.length !== this.config.seatCount) {
+      throw new Error(`need exactly ${this.config.seatCount} entrants to start`);
     }
     this.entrants.forEach((e, i) => (e.seat = i + 1));
     this.status = 'running';
@@ -78,12 +88,26 @@ export class Tournament {
     this.draft = { hands: {} };
   }
 
-  // -- recording -----------------------------------------------------------
+  playingSeatsForRound(roundIndex) {
+    return playingSeats(this.config, roundIndex);
+  }
+
+  byeSeatsForRound(roundIndex) {
+    return byeSeats(this.config, roundIndex);
+  }
+
+  isPlaying(roundIndex, seat) {
+    return this.playingSeatsForRound(roundIndex).includes(seat);
+  }
+
   recordEntrantRound(seat, hands) {
     if (this.status !== 'running') {
       throw new Error('tournament is not running');
     }
-    this.#entrant(seat); // validates seat exists
+    this.#entrant(seat);
+    if (!this.isPlaying(this.currentRound, seat)) {
+      throw new Error(`seat ${seat} is on bye this round`);
+    }
     this.draft.hands[seat] = validateHands(hands);
   }
 
@@ -91,25 +115,26 @@ export class Tournament {
     return this.enteredSeats().length;
   }
 
-  // Seats that have recorded both hands for the in-progress round.
   enteredSeats() {
     if (this.status !== 'running' || !this.draft) return [];
     return Object.keys(this.draft.hands).map(Number);
   }
 
   isRoundComplete() {
-    return this.enteredCount() === SEAT_COUNT;
+    if (this.status !== 'running') return false;
+    return this.enteredCount() === this.playingSeatsForRound(this.currentRound).length;
   }
 
   confirmRound() {
     if (this.status !== 'running') throw new Error('tournament is not running');
     if (!this.isRoundComplete()) {
-      throw new Error('round is not complete (need all 12 entrants)');
+      const need = this.playingSeatsForRound(this.currentRound).length;
+      throw new Error(`round is not complete (need all ${need} playing entrants)`);
     }
     this.results.push({ hands: this.draft.hands });
-    if (this.currentRound + 1 >= ROUND_COUNT) {
+    if (this.currentRound + 1 >= this.config.roundCount) {
       this.status = 'finished';
-      this.currentRound = ROUND_COUNT;
+      this.currentRound = this.config.roundCount;
       this.draft = null;
     } else {
       this.currentRound += 1;
@@ -122,6 +147,9 @@ export class Tournament {
       throw new Error(`round ${roundIndex} has not been played yet`);
     }
     this.#entrant(seat);
+    if (!this.isPlaying(roundIndex, seat)) {
+      throw new Error(`seat ${seat} was on bye in round ${roundIndex}`);
+    }
     this.results[roundIndex].hands[seat] = validateHands(hands);
     this.results[roundIndex].edited = true;
   }
@@ -132,22 +160,27 @@ export class Tournament {
     this.draft = null;
   }
 
-  // -- derived views -------------------------------------------------------
   seatingForRound(roundIndex) {
-    return physicalSeating(roundIndex, this.entrants);
+    return physicalSeating(this.config, roundIndex, this.entrants);
   }
 
   assignment(roundIndex, seat) {
-    return assignmentForSeat(roundIndex, this.entrants, seat);
+    return assignmentForSeat(this.config, roundIndex, this.entrants, seat);
+  }
+
+  byeEntrants(roundIndex) {
+    return this.byeSeatsForRound(roundIndex).map(
+      (seat) => this.entrants.find((e) => e.seat === seat) ?? { seat, name: `Seat ${seat}` }
+    );
   }
 
   standings() {
     return computeStandings(this.entrants, this.results);
   }
 
-  // -- persistence ---------------------------------------------------------
   toJSON() {
     return {
+      playerCount: this.playerCount,
       status: this.status,
       entrants: this.entrants,
       tableNames: this.tableNames,
@@ -158,7 +191,7 @@ export class Tournament {
   }
 
   static fromJSON(obj) {
-    const t = new Tournament();
+    const t = new Tournament(obj.playerCount ?? 12);
     t.status = obj.status;
     t.entrants = obj.entrants ?? [];
     t.tableNames = obj.tableNames ?? ['Table 1', 'Table 2', 'Table 3'];
@@ -168,7 +201,6 @@ export class Tournament {
     return t;
   }
 
-  // -- internals -----------------------------------------------------------
   #entrant(seat) {
     const e = this.entrants.find((x) => x.seat === seat);
     if (!e) throw new Error(`no entrant at seat ${seat}`);

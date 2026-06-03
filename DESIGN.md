@@ -12,9 +12,16 @@ per-entrant stats (grands, nellos), and show standings.
 
 - **Format is custom.** 3 tables × 4 players = **12 seats**. Two-vs-two whist.
   1 round = 2 hands dealt (so each team deals once).
-- **Hard-lock to 12 seats.** No 8/16 variants for v1; we collapse extra humans
-  into composite entrants instead (see below). Building 8/16 later is cheap if
-  we ever want it (just more precomputed schedule tables + a setup dropdown).
+- **3 player-count configs: 12, 14, 15.** Always 3 tables = 12 playing seats
+  per round; counts above 12 use **byes** (extra players sit out a round). The
+  schedules are precomputed & verified (`src/schedule.js`, `spec/schedules.spec.js`):
+  - 12 → full Wh(12), 11 rounds, no byes (everyone plays every round).
+  - 14 → 7 rounds, 2 byes/round, **everyone byes exactly once**.
+  - 15 → 5 rounds, 3 byes/round, **everyone byes exactly once**.
+  Both bye configs are *near-whist*: over their round count no pair partners
+  twice **and** no pair opposes twice. 13 isn't its own config — a 13th human
+  collapses into a composite entrant (below) to land back on 12. 16 (a real 4th
+  table = true Wh(16)) is deferred.
 - **The app's unit is the _Entrant_ (scoring unit), not the human.** An entrant
   occupies one of the 12 seats and owns one score + one stat line. An entrant
   may be one person or a collapsed group ("Kenny&Emily", "Nello My Jello").
@@ -78,28 +85,34 @@ per-entrant stats (grands, nellos), and show standings.
 
 ## 1. End-to-end story (large-scale acceptance criteria)
 
-**Setup / sign-up.** The laptop sits out as a shared station. The host names the
-three physical tables (e.g. "Kitchen / Dining / Porch"). As people arrive they
-walk up and **add themselves** — typing their own name, or a composite like
-"Kenny&Emily" (free text, funny names encouraged). Fewer humans than 12 isn't
-supported in v1; more than 12 collapse into composite entrants. When 12 are in,
-anyone hits **Start**, which freezes the roster to 12 seats and reveals Round 1.
+**Setup / sign-up.** The laptop sits out as a shared station. The host picks the
+**format** (12, 14, or 15 players) and names the three physical tables (e.g.
+"Kitchen / Dining / Porch"). As people arrive they walk up and **add
+themselves** — typing their own name, or a composite like "Kenny&Emily" (free
+text, funny names encouraged). The roster caps at the format's seat count; a
+count that doesn't fit a format (e.g. 13) collapses extras into composite
+entrants. When the roster is full, anyone hits **Start**, which freezes the
+seats and reveals Round 1.
 
-> _Accepts:_ Can't start with ≠ 12 entrants. Names editable up until Start.
-> After Start, the seat→entrant mapping is fixed for the tournament.
+> _Accepts:_ Can't start unless the roster exactly fills the chosen format
+> (12 / 14 / 15). Names editable up until Start. After Start, the seat→entrant
+> mapping is fixed for the tournament.
 
 **A round.** The station shows each entrant's assignment in plain language —
 *"Round 3: go to the Porch with Joan, against Rick & Nello My Jello."* People go
 play their 2 hands. Afterward they drift back, **tap their own name, and enter
 their two hands** — each hand = points + the bid they made (`nello` or `grand`,
-required). The host can enter on anyone's behalf (same flow). A board shows
-"X of 12 entered"; when all 12 are in, the round advances.
+required). The host can enter on anyone's behalf (same flow). In bye formats the
+station also shows who's **sitting out this round** (they have nothing to enter).
+A board shows "X of 12 entered" (always 12 playing); when all 12 playing
+entrants are in, the round advances.
 
-> _Accepts:_ A round isn't complete until all 12 entrants have both hands
-> entered with points and a nello/grand bid. Anyone can re-open and correct a
+> _Accepts:_ A round isn't complete until all 12 *playing* entrants have both
+> hands entered with points and a nello/grand bid; byers are excluded and can't
+> record/edit a hand for a round they sat out. Anyone can re-open and correct a
 > completed round (with a visible "edited" affordance) — family events
-> fat-finger scores. Physical-table names come from the optimized movement
-> mapping so nobody is stuck at one table > 2 rounds running.
+> fat-finger scores. Physical-table names come from the movement mapping so
+> nobody is stuck at one table > 2 rounds running (byes also break up runs).
 
 **Progression.** On confirming a round, the app advances to the next round's
 seating (straight from the precomputed schedule — no computation, no failure
@@ -133,7 +146,7 @@ whole tournament as a JSON/CSV backup and start a fresh one.
 ### Explicitly out of scope for v1
 - Player self-service / phones / multi-device sync.
 - Accounts, auth, real-time updates.
-- Counts other than 12.
+- Player counts other than 12 / 14 / 15 (13 collapses to 12; 16 would need a 4th table).
 - Whist rules enforcement (the app records outcomes; humans play the game).
 - Scoring-rule math (we record the number the table reports — see open question).
 

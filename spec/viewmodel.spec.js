@@ -48,7 +48,7 @@ describe('viewmodel', () => {
       t.confirmRound();
       const rows = standingsView(t);
       expect(rows.length).toBe(12);
-      expect(rows[0].seat).toBe(12); // highest points
+      expect(rows[0].seat).toBe(12);
       expect(rows[0].isLeader).toBe(true);
       expect(rows[1].isLeader).toBe(false);
       expect(rows[0].grandsLabel).toBe('2 (2✓)');
@@ -94,7 +94,6 @@ describe('viewmodel', () => {
       const t = started();
       playRound(t);
       playRound(t);
-      // a partial third round must NOT appear
       t.recordEntrantRound(1, twoHands(1, 'grand'));
 
       const rounds = confirmedRounds(t);
@@ -105,7 +104,7 @@ describe('viewmodel', () => {
 
       const seat3 = rounds[0].entries.find((e) => e.seat === 3);
       expect(seat3.name).toBe('E3');
-      expect(seat3.points).toBe(6); // 3 + 3
+      expect(seat3.points).toBe(6);
       expect(seat3.hands.length).toBe(2);
     });
 

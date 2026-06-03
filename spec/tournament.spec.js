@@ -1,5 +1,4 @@
 import { Tournament } from '../src/tournament.js';
-import { assignmentForSeat } from '../src/seating.js';
 
 const NAMES = [
   'Ethan', 'Kenny&Emily', 'Nello My Jello', 'Grandma', 'Pete', 'Joan',
@@ -12,8 +11,6 @@ const fresh = () => {
   return t;
 };
 
-// Deterministic hands for a seat in a round: points tied to seat (so seat 12
-// wins), bid alternates by round parity to exercise grand/nello counts.
 const handsFor = (seat, roundIndex) => {
   const bid = roundIndex % 2 === 0 ? 'grand' : 'nello';
   return [
@@ -29,7 +26,6 @@ const playAndConfirmRound = (t) => {
   t.confirmRound();
 };
 
-// --------------------------------------------------------------------------
 describe('Tournament — setup', () => {
   it('starts in setup with no entrants', () => {
     const t = new Tournament();
@@ -38,7 +34,7 @@ describe('Tournament — setup', () => {
   });
 
   it('rejects empty names and more than 12 entrants', () => {
-    const t = fresh(); // already 12
+    const t = fresh();
     expect(() => t.addEntrant('')).toThrowError(/name/i);
     expect(() => t.addEntrant('   ')).toThrowError(/name/i);
     expect(() => t.addEntrant('Extra')).toThrowError(/12/);
@@ -102,6 +98,17 @@ describe('Tournament — recording hands', () => {
     t.recordEntrantRound(1, handsFor(1, 0));
     expect(() => t.confirmRound()).toThrowError(/complete|12/i);
   });
+
+  it('stores only normalized {points, bid} hands, stripping any extra keys', () => {
+    t.recordEntrantRound(1, [
+      { points: 3, bid: 'grand', note: 'sandbagged', sticky: true },
+      { points: 0, bid: 'nello', foo: 1 },
+    ]);
+    expect(t.draft.hands[1]).toEqual([
+      { points: 3, bid: 'grand' },
+      { points: 0, bid: 'nello' },
+    ]);
+  });
 });
 
 describe('Tournament — full scenario (walk the model end to end)', () => {
@@ -117,21 +124,18 @@ describe('Tournament — full scenario (walk the model end to end)', () => {
     const s = t.standings();
     expect(s.length).toBe(12);
     s.forEach((row) => expect(row.roundsPlayed).toBe(11));
-    // seat 12 scored the most points every hand -> winner
     expect(s[0].seat).toBe(12);
     expect(s[0].rank).toBe(1);
-    // each seat played 22 hands; points = seat * 22
     expect(s[0].points).toBe(12 * 22);
   });
 
   it('every entrant experiences 11 DISTINCT partners (no repeats), via the seating path', () => {
     const t = fresh();
     t.start();
-    const entrants = t.entrants;
     for (let seat = 1; seat <= 12; seat++) {
       const partners = new Set();
       for (let r = 0; r < 11; r++) {
-        partners.add(assignmentForSeat(r, entrants, seat).partner.seat);
+        partners.add(t.assignment(r, seat).partner.seat);
       }
       expect(partners.size).withContext(`seat ${seat}`).toBe(11);
       expect(partners.has(seat)).toBe(false);
@@ -144,13 +148,13 @@ describe('Tournament — full scenario (walk the model end to end)', () => {
     playAndConfirmRound(t);
     playAndConfirmRound(t);
     playAndConfirmRound(t);
-    playAndConfirmRound(t); // 4 rounds
+    playAndConfirmRound(t);
     t.end();
     expect(t.status).toBe('finished');
     const s = t.standings();
     s.forEach((row) => expect(row.roundsPlayed).toBe(4));
     expect(s[0].seat).toBe(12);
-    expect(s[0].points).toBe(12 * 8); // 4 rounds * 2 hands
+    expect(s[0].points).toBe(12 * 8);
   });
 });
 
@@ -158,11 +162,10 @@ describe('Tournament — editing a confirmed round', () => {
   it('lets you correct a past round and reflects it in standings, marked edited', () => {
     const t = fresh();
     t.start();
-    playAndConfirmRound(t); // round 0 confirmed
-    playAndConfirmRound(t); // round 1 confirmed
+    playAndConfirmRound(t);
+    playAndConfirmRound(t);
 
     const before = t.standings().find((r) => r.seat === 1).points;
-    // Bump seat 1's round-0 hands way up.
     t.editRound(0, 1, [{ points: 100, bid: 'grand' }, { points: 100, bid: 'grand' }]);
     const after = t.standings().find((r) => r.seat === 1).points;
 
@@ -183,14 +186,102 @@ describe('Tournament — backup round-trip (refresh loses nothing)', () => {
     t.start();
     playAndConfirmRound(t);
     playAndConfirmRound(t);
-    // partial third round
     t.recordEntrantRound(1, handsFor(1, 2));
 
     const restored = Tournament.fromJSON(JSON.parse(JSON.stringify(t.toJSON())));
     expect(restored.status).toBe('running');
+    expect(restored.playerCount).toBe(12);
     expect(restored.currentRound).toBe(2);
     expect(restored.enteredCount()).toBe(1);
     expect(restored.entrants).toEqual(t.entrants);
+    expect(restored.standings()).toEqual(t.standings());
+  });
+});
+
+describe('Tournament — player-count configs', () => {
+  const names = (n) => Array.from({ length: n }, (_, i) => `P${i + 1}`);
+  const build = (count) => {
+    const t = new Tournament(count);
+    names(count).forEach((nm) => t.addEntrant(nm));
+    return t;
+  };
+
+  it('rejects an unsupported player count at construction and via setPlayerCount', () => {
+    expect(() => new Tournament(13)).toThrowError(/13/);
+    const t = new Tournament(12);
+    expect(() => t.setPlayerCount(16)).toThrowError(/16/);
+  });
+
+  it('caps the roster at the config seat count', () => {
+    const t = build(15);
+    expect(t.entrants.length).toBe(15);
+    expect(() => t.addEntrant('overflow')).toThrowError(/15/);
+  });
+
+  it('cannot start a 14-config without exactly 14 entrants', () => {
+    const t = new Tournament(14);
+    names(12).forEach((nm) => t.addEntrant(nm));
+    expect(() => t.start()).toThrowError(/14/);
+  });
+
+  it('refuses to switch player count if the current roster is too big', () => {
+    const t = build(15);
+    expect(() => t.setPlayerCount(12)).toThrowError(/remove/i);
+  });
+
+  it('rejects recording (and editing) for a seat that is on bye that round', () => {
+    const t = build(15);
+    t.start();
+    const bye = t.byeSeatsForRound(0)[0];
+    expect(() => t.recordEntrantRound(bye, [{ points: 1, bid: 'nello' }, { points: 1, bid: 'nello' }]))
+      .toThrowError(/bye/i);
+  });
+
+  it('completes a round once all 12 PLAYING entrants are in (byers excluded)', () => {
+    const t = build(15);
+    t.start();
+    const playing = t.playingSeatsForRound(0);
+    expect(playing.length).toBe(12);
+    playing.forEach((seat, i) => {
+      t.recordEntrantRound(seat, [{ points: 1, bid: 'nello' }, { points: 1, bid: 'nello' }]);
+      if (i < playing.length - 1) expect(t.isRoundComplete()).toBe(false);
+    });
+    expect(t.isRoundComplete()).toBe(true);
+  });
+
+  for (const count of [14, 15]) {
+    it(`plays a full ${count}-player tournament: everyone byes exactly once`, () => {
+      const t = build(count);
+      t.start();
+      const rounds = t.config.roundCount;
+      for (let r = 0; r < rounds; r++) {
+        expect(t.status).toBe('running');
+        for (const seat of t.playingSeatsForRound(r)) {
+          t.recordEntrantRound(seat, [{ points: seat, bid: 'nello' }, { points: seat, bid: 'nello' }]);
+        }
+        t.confirmRound();
+      }
+      expect(t.status).toBe('finished');
+      const s = t.standings();
+      expect(s.length).toBe(count);
+      s.forEach((row) => {
+        expect(row.byes).withContext(`seat ${row.seat} byes`).toBe(1);
+        expect(row.roundsPlayed).withContext(`seat ${row.seat} games`).toBe(rounds - 1);
+      });
+    });
+  }
+
+  it('round-trips a 15-player tournament through JSON, preserving the config', () => {
+    const t = build(15);
+    t.start();
+    for (const seat of t.playingSeatsForRound(0)) {
+      t.recordEntrantRound(seat, [{ points: 2, bid: 'grand' }, { points: 0, bid: 'nello' }]);
+    }
+    t.confirmRound();
+    const restored = Tournament.fromJSON(JSON.parse(JSON.stringify(t.toJSON())));
+    expect(restored.playerCount).toBe(15);
+    expect(restored.config.roundCount).toBe(5);
+    expect(restored.currentRound).toBe(1);
     expect(restored.standings()).toEqual(t.standings());
   });
 });

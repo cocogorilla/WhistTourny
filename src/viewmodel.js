@@ -1,19 +1,14 @@
-// View-model: pure helpers that turn tournament state into render-ready data.
-// Keeps formatting/derivation out of the DOM layer (and under test).
-
 export function currentPhase(t) {
   if (t.status === 'setup') return 'setup';
   if (t.status === 'finished') return 'finished';
   return 'round';
 }
 
-// "3 (1✓)" — total grands with successful ones noted; just "0" when none.
 export function grandsLabel(row) {
   if (!row.grands) return '0';
   return `${row.grands} (${row.succGrands}✓)`;
 }
 
-// Standings rows + a display label and leader flag.
 export function standingsView(t) {
   const rows = t.standings();
   return rows.map((row) => ({
@@ -23,7 +18,6 @@ export function standingsView(t) {
   }));
 }
 
-// Confirmed rounds for the history/edit screen: per-entrant hands + totals.
 export function confirmedRounds(t) {
   return t.results.map((r, index) => ({
     index,
@@ -35,21 +29,30 @@ export function confirmedRounds(t) {
         seat: e.seat,
         name: e.name,
         hands,
+        onBye: hands.length === 0,
         points: hands.reduce((sum, h) => sum + h.points, 0),
       };
     }),
   }));
 }
 
-// Progress of the in-progress round: counts, who's missing, confirmability.
 export function roundProgress(t) {
+  const playing = t.status === 'running' ? t.playingSeatsForRound(t.currentRound) : [];
+  const playingSet = new Set(playing);
   const entered = new Set(t.enteredSeats());
-  const remaining = t.entrants.filter((e) => !entered.has(e.seat));
+  const remaining = t.entrants.filter(
+    (e) => playingSet.has(e.seat) && !entered.has(e.seat)
+  );
   return {
     roundNumber: (t.currentRound ?? 0) + 1,
     entered: entered.size,
-    total: t.entrants.length,
+    total: playing.length,
     remaining,
     canConfirm: t.isRoundComplete(),
   };
+}
+
+export function roundByes(t) {
+  if (t.status !== 'running') return [];
+  return t.byeEntrants(t.currentRound);
 }
