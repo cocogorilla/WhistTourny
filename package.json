@@ -1,0 +1,13 @@
+{
+  "name": "whist-tourny",
+  "version": "0.1.0",
+  "description": "Family whist tournament scorekeeper station",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "jasmine"
+  },
+  "devDependencies": {
+    "jasmine": "^6.2.0"
+  }
+}
