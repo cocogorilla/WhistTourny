@@ -23,6 +23,24 @@ export function standingsView(t) {
   }));
 }
 
+// Confirmed rounds for the history/edit screen: per-entrant hands + totals.
+export function confirmedRounds(t) {
+  return t.results.map((r, index) => ({
+    index,
+    roundNumber: index + 1,
+    edited: !!r.edited,
+    entries: t.entrants.map((e) => {
+      const hands = r.hands[e.seat] ?? [];
+      return {
+        seat: e.seat,
+        name: e.name,
+        hands,
+        points: hands.reduce((sum, h) => sum + h.points, 0),
+      };
+    }),
+  }));
+}
+
 // Progress of the in-progress round: counts, who's missing, confirmability.
 export function roundProgress(t) {
   const entered = new Set(t.enteredSeats());

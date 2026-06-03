@@ -3,14 +3,21 @@
 // through Tournament methods, persisting to localStorage on every change.
 
 import { Tournament } from './src/tournament.js';
-import { currentPhase, standingsView, roundProgress } from './src/viewmodel.js';
+import {
+  currentPhase,
+  standingsView,
+  roundProgress,
+  confirmedRounds,
+} from './src/viewmodel.js';
 
 const STORAGE_KEY = 'whist-tourny-v1';
 
 // -- state ------------------------------------------------------------------
 let t = load() ?? new Tournament();
-let tab = 'seating'; // running sub-view: 'seating' | 'entry' | 'standings'
+let tab = 'seating'; // sub-view: 'seating' | 'entry' | 'standings' | 'rounds'
 let selectedSeat = null;
+let editRoundIdx = null; // which confirmed round is open in the editor
+let editSeat = null; // which entrant within that round is being edited
 
 function load() {
   try {
@@ -52,12 +59,17 @@ function commit(fn) {
 // -- render -----------------------------------------------------------------
 function render() {
   const phase = currentPhase(t);
+  // Keep the active tab valid for the current phase.
+  if (phase === 'finished' && tab !== 'rounds') tab = 'standings';
+  if (phase === 'round' && !['seating', 'entry', 'standings', 'rounds'].includes(tab)) {
+    tab = 'seating';
+  }
   renderStatus(phase);
   renderNav(phase);
   renderFooter();
   const app = $('#app');
   if (phase === 'setup') app.innerHTML = setupView();
-  else if (phase === 'finished') app.innerHTML = finishedView();
+  else if (phase === 'finished') app.innerHTML = tab === 'rounds' ? roundsView() : finishedView();
   else app.innerHTML = runningView();
   wire(phase);
 }
@@ -71,14 +83,19 @@ function renderStatus(phase) {
 
 function renderNav(phase) {
   const nav = $('#nav');
-  if (phase !== 'round') {
-    nav.innerHTML = '';
-    return;
-  }
   const btn = (id, label) =>
     `<button class="nav-btn ${tab === id ? 'active' : ''}" data-tab="${id}">${label}</button>`;
-  nav.innerHTML =
-    btn('seating', 'Seating') + btn('entry', 'Enter Scores') + btn('standings', 'Standings');
+  if (phase === 'round') {
+    nav.innerHTML =
+      btn('seating', 'Seating') +
+      btn('entry', 'Enter Scores') +
+      btn('standings', 'Standings') +
+      btn('rounds', 'Edit Rounds');
+  } else if (phase === 'finished') {
+    nav.innerHTML = btn('standings', 'Final Standings') + btn('rounds', 'Edit Rounds');
+  } else {
+    nav.innerHTML = '';
+  }
 }
 
 function renderFooter() {
@@ -134,8 +151,26 @@ function setupView() {
 // -- running ----------------------------------------------------------------
 function runningView() {
   if (tab === 'standings') return standingsTable(false);
+  if (tab === 'rounds') return roundsView();
   if (tab === 'entry') return entryView();
   return seatingView();
+}
+
+// Two hand-input rows (points + Nello/Grand toggle), prefilled from `hands`.
+function handRows(hands) {
+  const row = (i) => {
+    const cur = hands?.[i] ?? { points: '', bid: 'nello' };
+    const pts = cur.points === '' ? '' : cur.points;
+    return `<div class="hand-row" data-hand="${i}">
+      <label>Hand ${i + 1}</label>
+      <input type="number" min="0" step="1" class="pts" value="${pts}" placeholder="pts" />
+      <span class="bid">
+        <button class="nello ${cur.bid === 'nello' ? 'on' : ''}" data-bid="nello">Nello</button>
+        <button class="grand ${cur.bid === 'grand' ? 'on' : ''}" data-bid="grand">Grand</button>
+      </span>
+    </div>`;
+  };
+  return row(0) + row(1);
 }
 
 function seatingView() {
@@ -189,25 +224,60 @@ function entryView() {
 
 function entryForm(seat) {
   const e = t.entrants.find((x) => x.seat === seat);
-  const existing = t.draft?.hands?.[seat];
-  const hand = (i) => {
-    const cur = existing?.[i] ?? { points: '', bid: 'nello' };
-    const pts = cur.points === '' ? '' : cur.points;
-    return `<div class="hand-row" data-hand="${i}">
-      <label>Hand ${i + 1}</label>
-      <input type="number" min="0" step="1" class="pts" value="${pts}" placeholder="pts" />
-      <span class="bid">
-        <button class="nello ${cur.bid === 'nello' ? 'on' : ''}" data-bid="nello">Nello</button>
-        <button class="grand ${cur.bid === 'grand' ? 'on' : ''}" data-bid="grand">Grand</button>
-      </span>
-    </div>`;
-  };
   return `
     <div class="card" id="entry-form" style="margin-top:1rem; max-width:480px;">
       <h3>${esc(e.name)}</h3>
-      ${hand(0)}
-      ${hand(1)}
+      ${handRows(t.draft?.hands?.[seat])}
       <button class="primary" data-action="save-entry">Save</button>
+    </div>`;
+}
+
+// -- edit a past round ------------------------------------------------------
+function roundsView() {
+  const rounds = confirmedRounds(t);
+  if (!rounds.length) {
+    return `<h2>Edit a past round</h2>
+      <p class="muted">No rounds have been confirmed yet. Once you confirm a round you can come back here to fix any mistyped scores.</p>`;
+  }
+  if (editRoundIdx != null && editRoundIdx >= rounds.length) editRoundIdx = null;
+
+  const roundBtns = rounds
+    .map(
+      (r) =>
+        `<button class="nav-btn ${r.index === editRoundIdx ? 'active' : ''}" data-edit-round="${r.index}">Round ${r.roundNumber}${r.edited ? ' ✎' : ''}</button>`
+    )
+    .join('');
+
+  let detail = '<p class="muted" style="margin-top:1rem">Pick a round above, then tap an entrant to fix their hands.</p>';
+  if (editRoundIdx != null) {
+    const r = rounds[editRoundIdx];
+    const chips = r.entries
+      .map((e) => {
+        const sel = e.seat === editSeat ? 'selected' : '';
+        const bids = e.hands.map((h) => (h.bid === 'grand' ? 'G' : 'N')).join('/');
+        return `<button class="card chip ${sel}" data-edit-seat="${e.seat}">
+          <span>${esc(e.name)}</span>
+          <span class="muted">${e.points} pts · ${bids}</span>
+        </button>`;
+      })
+      .join('');
+    detail = `<div class="cards entrants" style="margin-top:1rem">${chips}</div>
+      ${editSeat != null ? editForm(editRoundIdx, editSeat) : ''}`;
+  }
+
+  return `
+    <h2>Edit a past round</h2>
+    <div class="toolbar">${roundBtns}</div>
+    ${detail}`;
+}
+
+function editForm(roundIdx, seat) {
+  const e = t.entrants.find((x) => x.seat === seat);
+  return `
+    <div class="card" id="edit-form" style="margin-top:1rem; max-width:480px;">
+      <h3>Round ${roundIdx + 1} — ${esc(e.name)}</h3>
+      ${handRows(t.results[roundIdx].hands[seat])}
+      <button class="primary" data-action="save-edit">Save change</button>
     </div>`;
 }
 
@@ -267,13 +337,18 @@ function wire(phase) {
     const tabBtn = target.closest('[data-tab]');
     const seatBtn = target.closest('[data-seat]');
     const removeBtn = target.closest('[data-remove]');
+    const editRoundBtn = target.closest('[data-edit-round]');
+    const editSeatBtn = target.closest('[data-edit-seat]');
 
     if (tabBtn) { tab = tabBtn.dataset.tab; render(); return; }
     if (action === 'start') commit(() => t.start());
     else if (action === 'confirm') commit(() => { t.confirmRound(); tab = 'seating'; selectedSeat = null; });
     else if (action === 'save-entry') saveEntry();
+    else if (action === 'save-edit') saveEdit();
     else if (removeBtn) commit(() => t.entrants.splice(Number(removeBtn.dataset.remove), 1));
     else if (seatBtn) { selectedSeat = Number(seatBtn.dataset.seat); render(); }
+    else if (editRoundBtn) { editRoundIdx = Number(editRoundBtn.dataset.editRound); editSeat = null; render(); }
+    else if (editSeatBtn) { editSeat = Number(editSeatBtn.dataset.editSeat); render(); }
     // bid toggle (don't re-render; just flip the on-state)
     const bidBtn = target.closest('.bid button');
     if (bidBtn) {
@@ -298,20 +373,34 @@ function wire(phase) {
   }
 }
 
+// Read the two {points, bid} hands out of a form element.
+function readHands(form) {
+  return $$('.hand-row', form).map((row) => ({
+    points: Number($('.pts', row).value),
+    bid: $('.bid button.on', row)?.dataset.bid ?? 'nello',
+  }));
+}
+
 function saveEntry() {
   const form = $('#entry-form');
   if (!form) return;
-  const hands = $$('.hand-row', form).map((row) => {
-    const points = Number($('.pts', row).value);
-    const bid = $('.bid button.on', row)?.dataset.bid ?? 'nello';
-    return { points, bid };
-  });
+  const hands = readHands(form);
   commit(() => {
     t.recordEntrantRound(selectedSeat, hands);
     // jump to the next entrant who still needs to enter
     const entered = new Set(t.enteredSeats());
     const next = t.entrants.find((e) => !entered.has(e.seat));
     selectedSeat = next ? next.seat : null;
+  });
+}
+
+function saveEdit() {
+  const form = $('#edit-form');
+  if (!form) return;
+  const hands = readHands(form);
+  commit(() => {
+    t.editRound(editRoundIdx, editSeat, hands);
+    editSeat = null; // collapse the form; the chip shows the new total
   });
 }
 
@@ -333,7 +422,7 @@ function doImport(ev) {
   reader.onload = () => {
     try {
       t = Tournament.fromJSON(JSON.parse(reader.result));
-      selectedSeat = null;
+      selectedSeat = editSeat = editRoundIdx = null;
       tab = 'seating';
       save();
       render();
@@ -347,7 +436,7 @@ function doImport(ev) {
 function doNew() {
   if (!confirm('Start a new tournament? This clears the current one (export a backup first if you want it).')) return;
   t = new Tournament();
-  selectedSeat = null;
+  selectedSeat = editSeat = editRoundIdx = null;
   tab = 'seating';
   save();
   render();

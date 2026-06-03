@@ -4,6 +4,7 @@ import {
   grandsLabel,
   standingsView,
   roundProgress,
+  confirmedRounds,
 } from '../src/viewmodel.js';
 
 const NAMES = Array.from({ length: 12 }, (_, i) => `E${i + 1}`);
@@ -78,6 +79,51 @@ describe('viewmodel', () => {
       expect(p.entered).toBe(12);
       expect(p.canConfirm).toBe(true);
       expect(p.remaining.length).toBe(0);
+    });
+  });
+
+  describe('confirmedRounds', () => {
+    const playRound = (t, bid = 'nello') => {
+      for (let seat = 1; seat <= 12; seat++) {
+        t.recordEntrantRound(seat, twoHands(seat, bid));
+      }
+      t.confirmRound();
+    };
+
+    it('lists only confirmed rounds, with per-entrant hands and point totals', () => {
+      const t = started();
+      playRound(t);
+      playRound(t);
+      // a partial third round must NOT appear
+      t.recordEntrantRound(1, twoHands(1, 'grand'));
+
+      const rounds = confirmedRounds(t);
+      expect(rounds.length).toBe(2);
+      expect(rounds[0].roundNumber).toBe(1);
+      expect(rounds[0].edited).toBe(false);
+      expect(rounds[0].entries.length).toBe(12);
+
+      const seat3 = rounds[0].entries.find((e) => e.seat === 3);
+      expect(seat3.name).toBe('E3');
+      expect(seat3.points).toBe(6); // 3 + 3
+      expect(seat3.hands.length).toBe(2);
+    });
+
+    it('reflects an edit: updated points and an edited flag', () => {
+      const t = started();
+      playRound(t);
+      t.editRound(0, 1, [
+        { points: 50, bid: 'grand' },
+        { points: 50, bid: 'grand' },
+      ]);
+      const r = confirmedRounds(t)[0];
+      expect(r.edited).toBe(true);
+      expect(r.entries.find((e) => e.seat === 1).points).toBe(100);
+    });
+
+    it('is empty when no round has been confirmed', () => {
+      const t = started();
+      expect(confirmedRounds(t)).toEqual([]);
     });
   });
 });
