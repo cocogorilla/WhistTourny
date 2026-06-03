@@ -88,8 +88,13 @@ export class Tournament {
   }
 
   enteredCount() {
-    if (this.status !== 'running') return 0;
-    return Object.keys(this.draft.hands).length;
+    return this.enteredSeats().length;
+  }
+
+  // Seats that have recorded both hands for the in-progress round.
+  enteredSeats() {
+    if (this.status !== 'running' || !this.draft) return [];
+    return Object.keys(this.draft.hands).map(Number);
   }
 
   isRoundComplete() {
