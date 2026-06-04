@@ -8,12 +8,21 @@ import {
   assembleTableHands,
   editTables,
 } from './src/viewmodel.js';
+import {
+  decorateStandings,
+  benchQuip,
+  winnerBanner,
+  tiebreakQuip,
+  kennyContext,
+  kennyRoastCategory,
+  kennyRoastLine,
+} from './src/flavor.js';
 
 const STORAGE_KEY = 'whist-tourny-v1';
 
 let t = load() ?? new Tournament();
 let tab = 'seating';
-let setupStep = 1; // setup wizard: 1 tables · 2 sign-in · 3 confirm
+let setupStep = 1;
 let editRoundIdx = null;
 
 function load() {
@@ -204,7 +213,7 @@ function seatingView() {
     .join('');
   const byes = t.byeEntrants(t.currentRound);
   const byeLine = byes.length
-    ? `<div class="remaining">Sitting out this round: ${byes.map((e) => esc(e.name)).join(', ')}</div>`
+    ? `<div class="remaining">${benchQuip(t.currentRound + 1)}: ${byes.map((e) => esc(e.name)).join(', ')}</div>`
     : '';
   return `
     <div class="toolbar">
@@ -219,7 +228,7 @@ function seatingView() {
 function entryView() {
   const v = tableEntry(t);
   const byeLine = v.byes.length
-    ? `<div class="remaining">Sitting out this round (nothing to enter): ${v.byes.map((e) => esc(e.name)).join(', ')}</div>`
+    ? `<div class="remaining">${benchQuip(v.roundNumber)} (nothing to enter): ${v.byes.map((e) => esc(e.name)).join(', ')}</div>`
     : '';
   const cards = v.tables.map((tbl) => tableCard(tbl)).join('');
   return `
@@ -235,8 +244,6 @@ function entryView() {
     <div class="cards entry-tables" style="margin-top:1rem">${cards}</div>`;
 }
 
-// A whole-table entry card. One points box PER TEAM per hand (only one team
-// scores a hand; entering one zeroes the other), plus each player's own bid.
 function tableCard(tbl, opts = {}) {
   const action = opts.action ?? 'save-table';
   const label = opts.label ?? (tbl.done ? 'Update table' : 'Save table');
@@ -253,7 +260,6 @@ function tableCard(tbl, opts = {}) {
   </div>`;
 }
 
-// A team's two-hand point boxes, then each partner's per-hand bid toggles.
 function teamBlock(teamKey, members) {
   const ptsValue = (h) => {
     const v = members[0]?.hands?.[h]?.points;
@@ -274,7 +280,6 @@ function teamBlock(teamKey, members) {
     ${members.map(bidRow).join('')}`;
 }
 
-// One player's Nello/Grand toggle for a given hand.
 function bidCell(p, h) {
   const bid = p.hands?.[h]?.bid ?? 'nello';
   return `<span class="bid" data-seat="${p.seat}" data-hand="${h}">
@@ -317,13 +322,14 @@ function roundsView() {
 }
 
 function standingsTable(final) {
-  const rows = standingsView(t);
+  const rows = decorateStandings(standingsView(t), t.results);
   const showByes = rows.some((r) => r.byes > 0);
+  const anyTie = rows.some((r) => r.tied && r.roundsPlayed > 0);
   const body = rows
     .map(
       (r) => `<tr class="${r.isLeader && final ? 'leader' : ''}">
         <td class="rank">${r.rank}${r.tied ? ' <span class="tie-flag" title="tied — settle it!">⚑</span>' : ''}</td>
-        <td>${esc(r.name)}</td>
+        <td>${esc(r.name)} ${r.badges.map((b) => `<span class="badge" title="${b.title}">${b.icon}</span>`).join('')}</td>
         <td class="pts">${r.points}</td>
         <td class="g">${r.grandsLabel}</td>
         <td class="n">${r.nellos}</td>
@@ -332,22 +338,38 @@ function standingsTable(final) {
       </tr>`
     )
     .join('');
+  const tieNote = anyTie
+    ? `⚑ = dead even on points, successful grands, and grands. Suggested decider: <b>${tiebreakQuip(rows.length + t.results.length)}</b>.`
+    : '⚑ = a genuine tie; the app shows it instead of guessing a winner.';
   return `
+    ${kennyWatch()}
     <h2>${final ? 'Final standings' : 'Standings'}</h2>
     <table class="standings">
       <thead><tr><th>#</th><th>Entrant</th><th>Pts</th><th>Grands</th><th>Nellos</th><th>Rounds</th>${showByes ? '<th>Byes</th>' : ''}</tr></thead>
       <tbody>${body}</tbody>
     </table>
-    <p class="muted" style="margin-top:0.75rem">⚑ = tied on points, successful grands, and grands — settle it however you like.${showByes ? ' &nbsp;·&nbsp; <b>Byes</b> = rounds sat out; someone leading with 0 byes has played more hands than the rest.' : ''}</p>`;
+    <p class="muted" style="margin-top:0.75rem">${tieNote}${showByes ? ' &nbsp;·&nbsp; <b>Byes</b> = rounds sat out; someone leading with 0 byes has played more hands than the rest.' : ''}</p>`;
+}
+
+function kennyWatch() {
+  const ctx = kennyContext(t.entrants, t.results);
+  if (!ctx) return '';
+  let partner = 'your partner';
+  try {
+    partner = t.assignment(ctx.roundIndex, ctx.seat).partner.name;
+  } catch {
+    /* never let a gag crash the standings */
+  }
+  const line = kennyRoastLine(kennyRoastCategory(ctx), ctx.roundIndex, partner);
+  return `<div class="kenny-watch">🎯 <b>Kenny Watch</b> — ${esc(line)}</div>`;
 }
 
 function finishedView() {
-  const rows = standingsView(t);
-  const top = rows[0];
-  const sharedTop = rows.filter((r) => r.rank === 1);
-  const banner = sharedTop.length > 1
-    ? `<div class="winner-banner"><div>It's a tie at the top!</div><div class="name">${sharedTop.map((r) => esc(r.name)).join(' & ')}</div><div class="muted">Settle it among yourselves 🃏</div></div>`
-    : `<div class="winner-banner"><div>🏆 Winner</div><div class="name">${esc(top.name)}</div><div class="muted">${top.points} points over ${top.roundsPlayed} rounds</div></div>`;
+  const wb = winnerBanner(standingsView(t));
+  const banner = `<div class="winner-banner">
+    <div class="name">${esc(wb.title)}</div>
+    <div class="muted">${esc(wb.subtitle)}</div>
+  </div>`;
   return banner + standingsTable(true);
 }
 
@@ -389,7 +411,7 @@ function wire(phase) {
     }
   };
 
-  // Only one team scores a hand: typing points for a team zeroes the other.
+  // only one team scores a hand
   app.oninput = (ev) => {
     const box = ev.target.closest('.team-pts');
     if (!box || !(Number(box.value) > 0)) return;
@@ -417,9 +439,7 @@ function wire(phase) {
   }
 }
 
-// Record one table's results — team points spread to both partners, each
-// player's own bids — WITHOUT a full re-render, so other tables' in-progress
-// (unsaved) inputs aren't wiped.
+// Surgical update (no re-render) so other tables' unsaved inputs survive.
 function saveTable(tableIndex) {
   const card = $(`.table-entry[data-table="${tableIndex}"]`);
   if (!card) return;
@@ -453,8 +473,6 @@ function saveTable(tableIndex) {
   refreshEntryStatus();
 }
 
-// Update the entry screen's done-badges, counter, and Confirm button in place
-// (no re-render → unsaved tables keep their typed values).
 function refreshEntryStatus() {
   const v = tableEntry(t);
   const pill = $('.entry-pill');
@@ -472,8 +490,6 @@ function refreshEntryStatus() {
   });
 }
 
-// Save edits to one table of a confirmed round (team points spread to both
-// partners), then flag the round as edited — without wiping the screen.
 function saveEditTable(tableIndex) {
   const card = $(`.table-entry[data-table="${tableIndex}"]`);
   if (!card || editRoundIdx == null) return;

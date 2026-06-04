@@ -143,6 +143,17 @@ td.byes.no-bye { color: var(--gold); font-weight: 700; }
 .g { color: var(--grand); }
 .n { color: var(--nello); }
 
+.badge { font-size: 0.95rem; margin-left: 0.1rem; cursor: help; }
+.kenny-watch {
+  background: var(--grand-bg);
+  border: 1px solid var(--grand);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 1rem;
+}
+.kenny-watch b { color: var(--grand); }
+
 .winner-banner {
   background: linear-gradient(135deg, var(--grand-bg), var(--nello-bg));
   border: 1px solid var(--gold);

@@ -36,8 +36,6 @@ export function confirmedRounds(t) {
   }));
 }
 
-// Group a round's seating into 3 physical tables, each with its 4 players
-// (2 per team) and their hands taken from `handsMap` (null where missing).
 function buildTables(t, roundIndex, handsMap) {
   return t.seatingForRound(roundIndex).map((tbl) => {
     const players = [
@@ -58,8 +56,6 @@ function buildTables(t, roundIndex, handsMap) {
   });
 }
 
-// The current (in-progress) round for by-table entry: tables from the draft,
-// who's sitting out, and overall confirmability.
 export function tableEntry(t) {
   const round = t.currentRound;
   const tables = buildTables(t, round, t.draft?.hands ?? {});
@@ -73,7 +69,6 @@ export function tableEntry(t) {
   };
 }
 
-// A confirmed round rebuilt as team tables for editing (hands from results).
 export function editTables(t, roundIndex) {
   const result = t.results[roundIndex];
   return {
@@ -84,9 +79,6 @@ export function editTables(t, roundIndex) {
   };
 }
 
-// Build per-seat hands for a whole table from team-level points + per-player
-// bids. Both partners on a team get that team's score for each hand (only one
-// team scores a hand; the other is 0); each player keeps their own bid.
 export function assembleTableHands({ teamA, teamB, points, bids }) {
   const forTeam = (seats, key) =>
     seats.map((seat) => ({
