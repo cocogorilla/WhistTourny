@@ -33,11 +33,21 @@ describe('Tournament — setup', () => {
     expect(t.entrants.length).toBe(0);
   });
 
-  it('rejects empty names and more than 12 entrants', () => {
+  it('rejects empty names', () => {
     const t = fresh();
     expect(() => t.addEntrant('')).toThrowError(/name/i);
     expect(() => t.addEntrant('   ')).toThrowError(/name/i);
-    expect(() => t.addEntrant('Extra')).toThrowError(/12/);
+  });
+
+  it('allows signing in past the default 12 format, up to the max of 15', () => {
+    // Sign-in is not capped by the currently selected format — people arrive
+    // first, the format is confirmed afterward.
+    const t = fresh(); // 12 entrants, default 12-config
+    t.addEntrant('Thirteen');
+    t.addEntrant('Fourteen');
+    t.addEntrant('Fifteen');
+    expect(t.entrants.length).toBe(15);
+    expect(() => t.addEntrant('Sixteen')).toThrowError(/15/);
   });
 
   it('cannot start without exactly 12 entrants', () => {

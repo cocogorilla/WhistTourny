@@ -104,6 +104,12 @@ export const SCHEDULES = {
   15: CONFIG_15,
 };
 
+export const SUPPORTED_COUNTS = Object.keys(SCHEDULES)
+  .map(Number)
+  .sort((a, b) => a - b);
+
+export const MAX_SEATS = Math.max(...SUPPORTED_COUNTS);
+
 export function scheduleFor(players) {
   const cfg = SCHEDULES[players];
   if (!cfg) {

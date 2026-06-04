@@ -1,21 +1,20 @@
 import { Tournament } from './src/tournament.js';
-import { SCHEDULES } from './src/schedule.js';
+import { SCHEDULES, SUPPORTED_COUNTS, MAX_SEATS } from './src/schedule.js';
 import {
   currentPhase,
   standingsView,
-  roundProgress,
   confirmedRounds,
+  tableEntry,
+  assembleTableHands,
+  editTables,
 } from './src/viewmodel.js';
-
-const PLAYER_COUNTS = Object.keys(SCHEDULES).map(Number).sort((a, b) => a - b);
 
 const STORAGE_KEY = 'whist-tourny-v1';
 
 let t = load() ?? new Tournament();
 let tab = 'seating';
-let selectedSeat = null;
+let setupStep = 1; // setup wizard: 1 tables · 2 sign-in · 3 confirm
 let editRoundIdx = null;
-let editSeat = null;
 
 function load() {
   try {
@@ -70,10 +69,9 @@ function render() {
 
 function renderStatus(phase) {
   const s = $('#status');
-  const cfg = t.config;
-  if (phase === 'setup') s.textContent = `Sign-up — ${t.entrants.length} / ${cfg.seatCount}`;
+  if (phase === 'setup') s.textContent = `Setup · step ${setupStep} of 3`;
   else if (phase === 'finished') s.textContent = `Finished — ${t.results.length} rounds played`;
-  else s.textContent = `Round ${t.currentRound + 1} of ${cfg.roundCount}`;
+  else s.textContent = `Round ${t.currentRound + 1} of ${t.config.roundCount}`;
 }
 
 function renderNav(phase) {
@@ -103,7 +101,31 @@ function renderFooter() {
 }
 
 function setupView() {
-  const cfg = t.config;
+  if (setupStep === 1) return setupTablesStep();
+  if (setupStep === 2) return setupSignInStep();
+  return setupConfirmStep();
+}
+
+function setupTablesStep() {
+  const tableInputs = t.tableNames
+    .map(
+      (n, i) =>
+        `<input type="text" class="tname" data-i="${i}" value="${esc(n)}" placeholder="Table ${i + 1}" />`
+    )
+    .join('');
+  return `
+    <h2>Set up · Step 1 of 3 — Name your tables</h2>
+    <div class="card">
+      <h3>Your three tables</h3>
+      <div class="field">${tableInputs}</div>
+      <p class="muted">Name the tables (or just point at them) so everyone gets a fresh — and someone else's still-warm — seat each round.</p>
+    </div>
+    <div class="toolbar wizard-nav"><span class="spacer"></span>
+      <button class="primary" data-action="setup-next">Next: sign in ▶</button>
+    </div>`;
+}
+
+function setupSignInStep() {
   const seats = t.entrants
     .map(
       (e, i) => `<li>
@@ -114,46 +136,49 @@ function setupView() {
       </li>`
     )
     .join('');
-  const tableInputs = t.tableNames
-    .map(
-      (n, i) =>
-        `<input type="text" class="tname" data-i="${i}" value="${esc(n)}" placeholder="Table ${i + 1}" />`
-    )
-    .join('');
-  const formatPick = PLAYER_COUNTS.map((c) => {
-    const cc = SCHEDULES[c];
-    const byes = cc.byesByRound[0].length;
-    const sub = byes ? `${cc.roundCount} rounds · ${byes} sit out/round` : `${cc.roundCount} rounds · no byes`;
-    return `<button class="card format-opt ${t.playerCount === c ? 'selected' : ''}" data-players="${c}">
-      <div class="format-n">${c} players</div>
-      <div class="muted">${sub}</div>
-    </button>`;
-  }).join('');
+  const full = t.entrants.length >= MAX_SEATS;
   return `
-    <h2>Set up the tournament</h2>
-    <div class="card" style="margin-bottom:0.75rem;">
-      <h3>Format</h3>
-      <div class="cards format-pick" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));">${formatPick}</div>
-      <p class="muted">3 tables every round; with more than 12 players, people take turns sitting out (byes), shared evenly.</p>
+    <h2>Set up · Step 2 of 3 — Sign in players</h2>
+    <div class="card">
+      <h3>Who's playing? (${t.entrants.length} signed in)</h3>
+      <form id="add-form" class="field">
+        <input type="text" id="add-name" placeholder="Name (or 'Kenny&amp;Emily')" autocomplete="off" ${full ? 'disabled' : ''} />
+        <button class="primary" type="submit" ${full ? 'disabled' : ''}>Add</button>
+      </form>
+      <p class="muted">Add people as they arrive. More than fit? Combine two into one entrant — they share a seat &amp; score. (Up to ${MAX_SEATS}.)</p>
+      <ul class="seat-list">${seats || '<li class="muted">No one yet…</li>'}</ul>
     </div>
-    <div class="cards" style="grid-template-columns: 1fr 1fr;">
-      <div class="card">
-        <h3>Name your tables</h3>
-        <div class="field">${tableInputs}</div>
-        <p class="muted">These are the physical spots in the room. People are sent here so nobody gets stuck at one table.</p>
-      </div>
-      <div class="card">
-        <h3>Who's playing? (${t.entrants.length} / ${cfg.seatCount})</h3>
-        <form id="add-form" class="field">
-          <input type="text" id="add-name" placeholder="Name (or 'Kenny&amp;Emily')" autocomplete="off" />
-          <button class="primary" type="submit" ${t.entrants.length >= cfg.seatCount ? 'disabled' : ''}>Add</button>
-        </form>
-        <p class="muted">More than ${cfg.seatCount}? Combine some into one entrant — they share a seat &amp; score.</p>
-        <ul class="seat-list">${seats}</ul>
-        <button class="primary" data-action="start" ${t.entrants.length === cfg.seatCount ? '' : 'disabled'}>
-          Start tournament ▶
-        </button>
-      </div>
+    <div class="toolbar wizard-nav">
+      <button data-action="setup-back">◀ Tables</button>
+      <span class="spacer"></span>
+      <button class="primary" data-action="setup-next" ${t.entrants.length ? '' : 'disabled'}>Next: confirm ▶</button>
+    </div>`;
+}
+
+function setupConfirmStep() {
+  const n = t.entrants.length;
+  const cfg = SCHEDULES[n];
+  let body;
+  if (cfg) {
+    const byes = cfg.byesByRound[0].length;
+    const sub = byes
+      ? `${cfg.roundCount} rounds · ${byes} sit out each round (shared fairly)`
+      : `${cfg.roundCount} rounds · everyone partners everyone · no byes`;
+    body = `<div class="format-n">${n}-player format</div><div class="muted">${sub}</div>`;
+  } else {
+    body = `<div class="format-n">${n} players. Math is hard, huh?</div>
+      <p class="muted">We run 12, 14, or 15 — and somehow you wrangled up ${n}. What did you expect, miracles? Head back and either <b>combine</b> two folks into one entrant (the buddy system) or <b>round up</b> a straggler to land on ${SUPPORTED_COUNTS.join(', ')}.</p>`;
+  }
+  return `
+    <h2>Set up · Step 3 of 3 — Confirm the field</h2>
+    <div class="card">
+      <h3>You've signed in ${n} ${n === 1 ? 'player' : 'players'}</h3>
+      ${body}
+    </div>
+    <div class="toolbar wizard-nav">
+      <button data-action="setup-back">◀ Sign in</button>
+      <span class="spacer"></span>
+      <button class="primary" data-action="start" ${cfg ? '' : 'disabled'}>Start tournament ▶</button>
     </div>`;
 }
 
@@ -162,22 +187,6 @@ function runningView() {
   if (tab === 'rounds') return roundsView();
   if (tab === 'entry') return entryView();
   return seatingView();
-}
-
-function handRows(hands) {
-  const row = (i) => {
-    const cur = hands?.[i] ?? { points: '', bid: 'nello' };
-    const pts = cur.points === '' ? '' : cur.points;
-    return `<div class="hand-row" data-hand="${i}">
-      <label>Hand ${i + 1}</label>
-      <input type="number" min="0" step="1" class="pts" value="${pts}" placeholder="pts" />
-      <span class="bid">
-        <button class="nello ${cur.bid === 'nello' ? 'on' : ''}" data-bid="nello">Nello</button>
-        <button class="grand ${cur.bid === 'grand' ? 'on' : ''}" data-bid="grand">Grand</button>
-      </span>
-    </div>`;
-  };
-  return row(0) + row(1);
 }
 
 function seatingView() {
@@ -208,48 +217,70 @@ function seatingView() {
 }
 
 function entryView() {
-  const p = roundProgress(t);
-  const entered = new Set(t.enteredSeats());
-  const playing = new Set(t.playingSeatsForRound(t.currentRound));
-  const chips = t.entrants
-    .filter((e) => playing.has(e.seat))
-    .map((e) => {
-      const done = entered.has(e.seat);
-      const sel = e.seat === selectedSeat ? 'selected' : '';
-      return `<button class="card chip ${done ? 'done' : ''} ${sel}" data-seat="${e.seat}">
-        <span>${esc(e.name)}</span>
-        <span class="${done ? 'tick' : 'muted'}">${done ? '✓' : '…'}</span>
-      </button>`;
-    })
-    .join('');
-  const byes = t.byeEntrants(t.currentRound);
-  const byeLine = byes.length
-    ? `<div class="remaining">On bye this round (nothing to enter): ${byes.map((e) => esc(e.name)).join(', ')}</div>`
+  const v = tableEntry(t);
+  const byeLine = v.byes.length
+    ? `<div class="remaining">Sitting out this round (nothing to enter): ${v.byes.map((e) => esc(e.name)).join(', ')}</div>`
     : '';
-  const showForm = selectedSeat && playing.has(selectedSeat);
+  const cards = v.tables.map((tbl) => tableCard(tbl)).join('');
   return `
     <div class="toolbar">
-      <h2 style="margin:0">Round ${t.currentRound + 1} — enter your hands</h2>
-      <span class="pill">${p.entered} / ${p.total} entered</span>
+      <h2 style="margin:0">Round ${v.roundNumber} — enter scores by table</h2>
+      <span class="pill entry-pill">${v.tablesDone} / ${v.tablesTotal} tables in</span>
       <span class="spacer"></span>
-      <button class="primary" data-action="confirm" ${p.canConfirm ? '' : 'disabled'}>
+      <button class="primary" data-action="confirm" ${v.canConfirm ? '' : 'disabled'}>
         Confirm round ✓
       </button>
     </div>
-    ${p.remaining.length ? `<div class="remaining">Still need: ${p.remaining.map((e) => esc(e.name)).join(', ')}</div>` : ''}
     ${byeLine}
-    <div class="cards entrants" style="margin-top:1rem">${chips}</div>
-    ${showForm ? entryForm(selectedSeat) : '<p class="muted" style="margin-top:1rem">Tap your name above to enter your two hands.</p>'}`;
+    <div class="cards entry-tables" style="margin-top:1rem">${cards}</div>`;
 }
 
-function entryForm(seat) {
-  const e = t.entrants.find((x) => x.seat === seat);
-  return `
-    <div class="card" id="entry-form" style="margin-top:1rem; max-width:480px;">
-      <h3>${esc(e.name)}</h3>
-      ${handRows(t.draft?.hands?.[seat])}
-      <button class="primary" data-action="save-entry">Save</button>
+// A whole-table entry card. One points box PER TEAM per hand (only one team
+// scores a hand; entering one zeroes the other), plus each player's own bid.
+function tableCard(tbl, opts = {}) {
+  const action = opts.action ?? 'save-table';
+  const label = opts.label ?? (tbl.done ? 'Update table' : 'Save table');
+  const tag = opts.hideTag ? '' : `<span class="status-tag">${tbl.done ? '✓ entered' : '• pending'}</span>`;
+  const teamA = tbl.players.filter((p) => p.team === 'A');
+  const teamB = tbl.players.filter((p) => p.team === 'B');
+  return `<div class="card table-entry ${tbl.done ? 'done' : ''}" data-table="${tbl.table}">
+    <h3>${esc(tbl.name)} ${tag}</h3>
+    <div class="entry-head"><span></span><span>Hand 1</span><span>Hand 2</span></div>
+    ${teamBlock('A', teamA)}
+    <div class="vs">— vs —</div>
+    ${teamBlock('B', teamB)}
+    <button class="primary" data-action="${action}" data-table="${tbl.table}">${label}</button>
+  </div>`;
+}
+
+// A team's two-hand point boxes, then each partner's per-hand bid toggles.
+function teamBlock(teamKey, members) {
+  const ptsValue = (h) => {
+    const v = members[0]?.hands?.[h]?.points;
+    return v == null ? '' : v;
+  };
+  const ptsCell = (h) =>
+    `<input type="number" min="0" step="1" class="pts team-pts" data-team="${teamKey}" data-hand="${h}" value="${ptsValue(h)}" placeholder="pts" />`;
+  const bidRow = (p) => `<div class="entry-row bid-row">
+      <span class="pname">${esc(p.name)}</span>
+      ${bidCell(p, 0)}
+      ${bidCell(p, 1)}
     </div>`;
+  return `<div class="team-row">
+      <span class="tlabel">${members.map((p) => esc(p.name)).join(' & ')}</span>
+      ${ptsCell(0)}
+      ${ptsCell(1)}
+    </div>
+    ${members.map(bidRow).join('')}`;
+}
+
+// One player's Nello/Grand toggle for a given hand.
+function bidCell(p, h) {
+  const bid = p.hands?.[h]?.bid ?? 'nello';
+  return `<span class="bid" data-seat="${p.seat}" data-hand="${h}">
+    <button type="button" class="nello ${bid === 'nello' ? 'on' : ''}" data-bid="nello">N</button>
+    <button type="button" class="grand ${bid === 'grand' ? 'on' : ''}" data-bid="grand">G</button>
+  </span>`;
 }
 
 function roundsView() {
@@ -263,47 +294,26 @@ function roundsView() {
   const roundBtns = rounds
     .map(
       (r) =>
-        `<button class="nav-btn ${r.index === editRoundIdx ? 'active' : ''}" data-edit-round="${r.index}">Round ${r.roundNumber}${r.edited ? ' ✎' : ''}</button>`
+        `<button class="nav-btn ${r.index === editRoundIdx ? 'active' : ''}" data-edit-round="${r.index}"${r.edited ? ' title="edited after it was confirmed"' : ''}>Round ${r.roundNumber}${r.edited ? ' ✎' : ''}</button>`
     )
     .join('');
 
-  let detail = '<p class="muted" style="margin-top:1rem">Pick a round above, then tap an entrant to fix their hands.</p>';
+  let detail = '<p class="muted" style="margin-top:1rem">Pick a round above, then fix a table — points are per team (partners share), bids are per player.</p>';
   if (editRoundIdx != null) {
-    const r = rounds[editRoundIdx];
-    const chips = r.entries
-      .map((e) => {
-        if (e.onBye) {
-          return `<div class="card chip is-bye">
-            <span>${esc(e.name)}</span>
-            <span class="muted">bye</span>
-          </div>`;
-        }
-        const sel = e.seat === editSeat ? 'selected' : '';
-        const bids = e.hands.map((h) => (h.bid === 'grand' ? 'G' : 'N')).join('/');
-        return `<button class="card chip ${sel}" data-edit-seat="${e.seat}">
-          <span>${esc(e.name)}</span>
-          <span class="muted">${e.points} pts · ${bids}</span>
-        </button>`;
-      })
+    const v = editTables(t, editRoundIdx);
+    const byeLine = v.byes.length
+      ? `<div class="remaining">Sat out this round: ${v.byes.map((e) => esc(e.name)).join(', ')}</div>`
+      : '';
+    const cards = v.tables
+      .map((tbl) => tableCard(tbl, { action: 'save-edit-table', label: 'Save changes', hideTag: true }))
       .join('');
-    detail = `<div class="cards entrants" style="margin-top:1rem">${chips}</div>
-      ${editSeat != null ? editForm(editRoundIdx, editSeat) : ''}`;
+    detail = `${byeLine}<div class="cards entry-tables" style="margin-top:1rem">${cards}</div>`;
   }
 
   return `
     <h2>Edit a past round</h2>
     <div class="toolbar">${roundBtns}</div>
     ${detail}`;
-}
-
-function editForm(roundIdx, seat) {
-  const e = t.entrants.find((x) => x.seat === seat);
-  return `
-    <div class="card" id="edit-form" style="margin-top:1rem; max-width:480px;">
-      <h3>Round ${roundIdx + 1} — ${esc(e.name)}</h3>
-      ${handRows(t.results[roundIdx].hands[seat])}
-      <button class="primary" data-action="save-edit">Save change</button>
-    </div>`;
 }
 
 function standingsTable(final) {
@@ -359,22 +369,18 @@ function wire(phase) {
     const target = ev.target;
     const action = target.closest('[data-action]')?.dataset.action;
     const tabBtn = target.closest('[data-tab]');
-    const seatBtn = target.closest('[data-seat]');
     const removeBtn = target.closest('[data-remove]');
-    const playersBtn = target.closest('[data-players]');
     const editRoundBtn = target.closest('[data-edit-round]');
-    const editSeatBtn = target.closest('[data-edit-seat]');
 
     if (tabBtn) { tab = tabBtn.dataset.tab; render(); return; }
-    if (action === 'start') commit(() => t.start());
-    else if (action === 'confirm') commit(() => { t.confirmRound(); tab = 'seating'; selectedSeat = null; });
-    else if (action === 'save-entry') saveEntry();
-    else if (action === 'save-edit') saveEdit();
-    else if (playersBtn) commit(() => t.setPlayerCount(Number(playersBtn.dataset.players)));
+    if (action === 'setup-next') { setupStep = Math.min(3, setupStep + 1); render(); return; }
+    if (action === 'setup-back') { setupStep = Math.max(1, setupStep - 1); render(); return; }
+    if (action === 'start') commit(() => { t.setPlayerCount(t.entrants.length); t.start(); });
+    else if (action === 'confirm') commit(() => { t.confirmRound(); tab = 'seating'; });
+    else if (action === 'save-table') saveTable(Number(target.closest('[data-table]').dataset.table));
+    else if (action === 'save-edit-table') saveEditTable(Number(target.closest('[data-table]').dataset.table));
     else if (removeBtn) commit(() => t.entrants.splice(Number(removeBtn.dataset.remove), 1));
-    else if (seatBtn) { selectedSeat = Number(seatBtn.dataset.seat); render(); }
-    else if (editRoundBtn) { editRoundIdx = Number(editRoundBtn.dataset.editRound); editSeat = null; render(); }
-    else if (editSeatBtn) { editSeat = Number(editSeatBtn.dataset.editSeat); render(); }
+    else if (editRoundBtn) { editRoundIdx = Number(editRoundBtn.dataset.editRound); render(); }
     const bidBtn = target.closest('.bid button');
     if (bidBtn) {
       const group = bidBtn.parentElement;
@@ -383,12 +389,25 @@ function wire(phase) {
     }
   };
 
+  // Only one team scores a hand: typing points for a team zeroes the other.
+  app.oninput = (ev) => {
+    const box = ev.target.closest('.team-pts');
+    if (!box || !(Number(box.value) > 0)) return;
+    const other = box.dataset.team === 'A' ? 'B' : 'A';
+    const opp = box
+      .closest('.table-entry')
+      .querySelector(`.team-pts[data-team="${other}"][data-hand="${box.dataset.hand}"]`);
+    if (opp) opp.value = '0';
+  };
+
   if (phase === 'setup') {
-    $('#add-form').onsubmit = (ev) => {
-      ev.preventDefault();
-      const input = $('#add-name');
-      commit(() => t.addEntrant(input.value));
-    };
+    const addForm = $('#add-form');
+    if (addForm) {
+      addForm.onsubmit = (ev) => {
+        ev.preventDefault();
+        commit(() => t.addEntrant($('#add-name').value));
+      };
+    }
     $$('.tname').forEach((inp) => {
       inp.onchange = () => {
         const names = $$('.tname').sort((a, b) => a.dataset.i - b.dataset.i).map((x) => x.value);
@@ -398,33 +417,96 @@ function wire(phase) {
   }
 }
 
-function readHands(form) {
-  return $$('.hand-row', form).map((row) => ({
-    points: Number($('.pts', row).value),
-    bid: $('.bid button.on', row)?.dataset.bid ?? 'nello',
-  }));
+// Record one table's results — team points spread to both partners, each
+// player's own bids — WITHOUT a full re-render, so other tables' in-progress
+// (unsaved) inputs aren't wiped.
+function saveTable(tableIndex) {
+  const card = $(`.table-entry[data-table="${tableIndex}"]`);
+  if (!card) return;
+  const tbl = tableEntry(t).tables.find((x) => x.table === tableIndex);
+  if (!tbl) return;
+
+  const points = { A: [0, 0], B: [0, 0] };
+  $$('.team-pts', card).forEach((box) => {
+    points[box.dataset.team][Number(box.dataset.hand)] = Number(box.value || 0);
+  });
+  const bids = {};
+  $$('.bid', card).forEach((b) => {
+    const seat = Number(b.dataset.seat);
+    (bids[seat] = bids[seat] || [])[Number(b.dataset.hand)] =
+      $('button.on', b)?.dataset.bid ?? 'nello';
+  });
+
+  const seatHands = assembleTableHands({
+    teamA: tbl.players.filter((p) => p.team === 'A').map((p) => p.seat),
+    teamB: tbl.players.filter((p) => p.team === 'B').map((p) => p.seat),
+    points,
+    bids,
+  });
+  try {
+    seatHands.forEach(({ seat, hands }) => t.recordEntrantRound(seat, hands));
+  } catch (err) {
+    alert(err.message);
+    return;
+  }
+  save();
+  refreshEntryStatus();
 }
 
-function saveEntry() {
-  const form = $('#entry-form');
-  if (!form) return;
-  const hands = readHands(form);
-  commit(() => {
-    t.recordEntrantRound(selectedSeat, hands);
-    const entered = new Set(t.enteredSeats());
-    const next = t.entrants.find((e) => !entered.has(e.seat));
-    selectedSeat = next ? next.seat : null;
+// Update the entry screen's done-badges, counter, and Confirm button in place
+// (no re-render → unsaved tables keep their typed values).
+function refreshEntryStatus() {
+  const v = tableEntry(t);
+  const pill = $('.entry-pill');
+  if (pill) pill.textContent = `${v.tablesDone} / ${v.tablesTotal} tables in`;
+  const confirmBtn = $('[data-action="confirm"]');
+  if (confirmBtn) confirmBtn.disabled = !v.canConfirm;
+  v.tables.forEach((tbl) => {
+    const card = $(`.table-entry[data-table="${tbl.table}"]`);
+    if (!card) return;
+    card.classList.toggle('done', tbl.done);
+    const tag = $('.status-tag', card);
+    if (tag) tag.textContent = tbl.done ? '✓ entered' : '• pending';
+    const btn = $('button[data-action="save-table"]', card);
+    if (btn) btn.textContent = tbl.done ? 'Update table' : 'Save table';
   });
 }
 
-function saveEdit() {
-  const form = $('#edit-form');
-  if (!form) return;
-  const hands = readHands(form);
-  commit(() => {
-    t.editRound(editRoundIdx, editSeat, hands);
-    editSeat = null;
+// Save edits to one table of a confirmed round (team points spread to both
+// partners), then flag the round as edited — without wiping the screen.
+function saveEditTable(tableIndex) {
+  const card = $(`.table-entry[data-table="${tableIndex}"]`);
+  if (!card || editRoundIdx == null) return;
+  const tbl = editTables(t, editRoundIdx).tables.find((x) => x.table === tableIndex);
+  if (!tbl) return;
+
+  const points = { A: [0, 0], B: [0, 0] };
+  $$('.team-pts', card).forEach((box) => {
+    points[box.dataset.team][Number(box.dataset.hand)] = Number(box.value || 0);
   });
+  const bids = {};
+  $$('.bid', card).forEach((b) => {
+    (bids[Number(b.dataset.seat)] = bids[Number(b.dataset.seat)] || [])[Number(b.dataset.hand)] =
+      $('button.on', b)?.dataset.bid ?? 'nello';
+  });
+
+  const seatHands = assembleTableHands({
+    teamA: tbl.players.filter((p) => p.team === 'A').map((p) => p.seat),
+    teamB: tbl.players.filter((p) => p.team === 'B').map((p) => p.seat),
+    points,
+    bids,
+  });
+  try {
+    seatHands.forEach(({ seat, hands }) => t.editRound(editRoundIdx, seat, hands));
+  } catch (err) {
+    alert(err.message);
+    return;
+  }
+  save();
+  const saveBtn = card.querySelector('button[data-action="save-edit-table"]');
+  if (saveBtn) saveBtn.textContent = 'Saved ✓';
+  const roundBtn = $(`[data-edit-round="${editRoundIdx}"]`);
+  if (roundBtn && !roundBtn.textContent.includes('✎')) roundBtn.textContent += ' ✎';
 }
 
 function doExport() {
@@ -444,7 +526,8 @@ function doImport(ev) {
   reader.onload = () => {
     try {
       t = Tournament.fromJSON(JSON.parse(reader.result));
-      selectedSeat = editSeat = editRoundIdx = null;
+      editRoundIdx = null;
+      setupStep = 1;
       tab = 'seating';
       save();
       render();
@@ -458,7 +541,8 @@ function doImport(ev) {
 function doNew() {
   if (!confirm('Start a new tournament? This clears the current one (export a backup first if you want it).')) return;
   t = new Tournament();
-  selectedSeat = editSeat = editRoundIdx = null;
+  editRoundIdx = null;
+  setupStep = 1;
   tab = 'seating';
   save();
   render();

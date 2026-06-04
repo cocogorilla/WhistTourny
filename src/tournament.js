@@ -1,4 +1,4 @@
-import { scheduleFor, playingSeats, byeSeats } from './schedule.js';
+import { scheduleFor, playingSeats, byeSeats, MAX_SEATS } from './schedule.js';
 import { physicalSeating, assignmentForSeat } from './seating.js';
 import { computeStandings } from './standings.js';
 
@@ -57,8 +57,8 @@ export class Tournament {
     }
     const trimmed = (name ?? '').trim();
     if (!trimmed) throw new Error('entrant name cannot be empty');
-    if (this.entrants.length >= this.config.seatCount) {
-      throw new Error(`cannot add more than ${this.config.seatCount} entrants`);
+    if (this.entrants.length >= MAX_SEATS) {
+      throw new Error(`cannot add more than ${MAX_SEATS} entrants`);
     }
     this.entrants.push({ seat: null, name: trimmed });
   }
