@@ -31,6 +31,7 @@ describe('flavor', () => {
       const icons = (s) => rows.find((r) => r.seat === s).badges.map((b) => b.icon);
       expect(icons(1)).toContain('😤');
       expect(icons(2)).toContain('🐔');
+      rows.flatMap((r) => r.badges).forEach((b) => expect(b.title.length).toBeGreaterThan(0));
     });
 
     it('flags a goose-egg 🍩 round and the biggest single-round haul 🎢', () => {

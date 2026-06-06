@@ -143,7 +143,38 @@ td.byes.no-bye { color: var(--gold); font-weight: 700; }
 .g { color: var(--grand); }
 .n { color: var(--nello); }
 
-.badge { font-size: 0.95rem; margin-left: 0.1rem; cursor: help; }
+.badge { position: relative; font-size: 0.95rem; margin-left: 0.1rem; cursor: help; }
+.badge[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 230px;
+  text-align: left;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  z-index: 20;
+  pointer-events: none;
+}
+.badge[data-tip]:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--line);
+  z-index: 20;
+  pointer-events: none;
+}
 .kenny-watch {
   background: var(--grand-bg);
   border: 1px solid var(--grand);

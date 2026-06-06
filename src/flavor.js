@@ -19,11 +19,11 @@ export function decorateStandings(rows, results) {
   return rows.map((row) => {
     const totals = totalsBySeat[row.seat];
     const badges = [];
-    if (row.grands > 0 && row.nellos === 0) badges.push({ icon: '😤', title: 'all grand, every hand' });
-    if (row.nellos > 0 && row.grands === 0) badges.push({ icon: '🐔', title: 'never once went grand' });
-    if (totals.some((v) => v === 0)) badges.push({ icon: '🍩', title: 'played a whole round for zero' });
+    if (row.grands > 0 && row.nellos === 0) badges.push({ icon: '😤', title: 'Went grand every single hand. Fearless, reckless, or both.' });
+    if (row.nellos > 0 && row.grands === 0) badges.push({ icon: '🐔', title: 'Nello every hand — bawk, bawk. The cards were scary.' });
+    if (totals.some((v) => v === 0)) badges.push({ icon: '🍩', title: 'Banked a glorious zero for a whole round. Goose egg.' });
     if (bestRound > 0 && totals.some((v) => v === bestRound)) {
-      badges.push({ icon: '🎢', title: 'biggest single-round haul' });
+      badges.push({ icon: '🎢', title: 'Biggest single-round haul — strapped in and screamed.' });
     }
     return { ...row, badges };
   });

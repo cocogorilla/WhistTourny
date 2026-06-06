@@ -331,7 +331,7 @@ function standingsTable(final) {
     .map(
       (r) => `<tr class="${r.isLeader && final ? 'leader' : ''}">
         <td class="rank">${r.rank}${r.tied ? ' <span class="tie-flag" title="tied — settle it!">⚑</span>' : ''}</td>
-        <td>${esc(r.name)} ${r.badges.map((b) => `<span class="badge" title="${b.title}">${b.icon}</span>`).join('')}</td>
+        <td>${esc(r.name)} ${r.badges.map((b) => `<span class="badge" data-tip="${esc(b.title)}" aria-label="${esc(b.title)}">${b.icon}</span>`).join('')}</td>
         <td class="pts">${r.points}</td>
         <td class="g">${r.grandsLabel}</td>
         <td class="n">${r.nellos}</td>
