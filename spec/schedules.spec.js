@@ -1,4 +1,4 @@
-import { SCHEDULES, scheduleFor } from '../src/schedule.js';
+import { SCHEDULES, scheduleFor, formatsForCount, formatById } from '../src/schedule.js';
 
 const pk = (a, b) => (a < b ? `${a}-${b}` : `${b}-${a}`);
 const PLAYING_PER_ROUND = 12;
@@ -32,6 +32,42 @@ describe('player-count configs', () => {
   it('scheduleFor throws on an unsupported count', () => {
     expect(() => scheduleFor(13)).toThrowError(/13/);
     expect(() => scheduleFor(17)).toThrowError(/17/);
+  });
+
+  describe('selectable formats (4-table option for 16)', () => {
+    it('offers two formats for 16 players, one each for the others', () => {
+      expect(formatsForCount(16).map((f) => f.id).sort()).toEqual(['16', '16x4']);
+      expect(formatsForCount(12).map((f) => f.id)).toEqual(['12']);
+      expect(formatsForCount(13)).toEqual([]);
+    });
+
+    it('every format carries a human label and its config', () => {
+      formatsForCount(16).forEach((f) => {
+        expect(f.label.length).toBeGreaterThan(0);
+        expect(f.config.players).toBe(16);
+      });
+    });
+
+    it('the 16-on-4 format seats all 16 every round, no byes, no repeat partners', () => {
+      const cfg = formatById('16x4').config;
+      expect(cfg.players).toBe(16);
+      expect(cfg.seatCount).toBe(16);
+      expect(cfg.tablesPerRound).toBe(4);
+      expect(cfg.roundCount).toBeGreaterThan(1);
+      cfg.schedule.forEach((round, r) => {
+        expect(round.length).withContext(`round ${r + 1} tables`).toBe(4);
+        const playing = round.flatMap((t) => [...t.teamA, ...t.teamB]).sort((a, b) => a - b);
+        expect(playing).withContext(`round ${r + 1} seats`).toEqual(Array.from({ length: 16 }, (_, i) => i + 1));
+        expect(cfg.byesByRound[r]).withContext(`round ${r + 1} byes`).toEqual([]);
+        expect(cfg.physicalTableByRound[r].length).toBe(4);
+      });
+      const { partner } = tally(cfg.schedule);
+      partner.forEach((count, key) => expect(count).withContext(`partners ${key}`).toBeLessThanOrEqual(1));
+    });
+
+    it('formatById returns null for an unknown id', () => {
+      expect(formatById('nope')).toBeNull();
+    });
   });
 
   for (const players of [12, 14, 15, 16]) {

@@ -1,0 +1,68 @@
+{
+  "playerCount": 12,
+  "formatId": null,
+  "status": "setup",
+  "entrants": [
+    {
+      "seat": null,
+      "name": "Kenny"
+    },
+    {
+      "seat": null,
+      "name": "Merle"
+    },
+    {
+      "seat": null,
+      "name": "Grandma"
+    },
+    {
+      "seat": null,
+      "name": "Uncle Bo"
+    },
+    {
+      "seat": null,
+      "name": "Pete"
+    },
+    {
+      "seat": null,
+      "name": "Joan"
+    },
+    {
+      "seat": null,
+      "name": "Rick"
+    },
+    {
+      "seat": null,
+      "name": "Tina"
+    },
+    {
+      "seat": null,
+      "name": "Dad"
+    },
+    {
+      "seat": null,
+      "name": "Mo"
+    },
+    {
+      "seat": null,
+      "name": "Sam"
+    },
+    {
+      "seat": null,
+      "name": "Liz"
+    },
+    {
+      "seat": null,
+      "name": "Lucky13"
+    }
+  ],
+  "tableNames": [
+    "Table 1",
+    "Table 2",
+    "Table 3"
+  ],
+  "currentRound": null,
+  "results": [],
+  "draft": null,
+  "schedule": null
+}

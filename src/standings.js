@@ -33,6 +33,7 @@ export function computeStandings(entrants, results) {
     return {
       ...tally,
       byes: completedRounds - tally.roundsPlayed,
+      avgPerRound: tally.roundsPlayed ? tally.points / tally.roundsPlayed : 0,
       name: e.name,
     };
   });

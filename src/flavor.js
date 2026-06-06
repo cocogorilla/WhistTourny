@@ -176,8 +176,6 @@ export const MERLE_ROASTS = {
   ],
 };
 
-// Pick a Merle line he hasn't been shown yet (non-repeat). Returns null once
-// the whole category has been seen — at which point we let him off the hook.
 export function nextMerleRoast(points, shown, seed) {
   const bank = points > 0 ? MERLE_ROASTS.positive : MERLE_ROASTS.zero;
   const unseen = bank.filter((line) => !shown.includes(line));

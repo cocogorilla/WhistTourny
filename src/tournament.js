@@ -1,4 +1,5 @@
-import { scheduleFor, playingSeats, byeSeats, MAX_SEATS } from './schedule.js';
+import { scheduleFor, playingSeats, byeSeats, MAX_SEATS, formatById } from './schedule.js';
+import { extendSchedule } from './extend.js';
 import { physicalSeating, assignmentForSeat } from './seating.js';
 import { computeStandings } from './standings.js';
 
@@ -32,9 +33,13 @@ export class Tournament {
     this.currentRound = null;
     this.results = [];
     this.draft = null;
+    this.schedule = null;
+    this.formatId = null;
   }
 
   get config() {
+    if (this.schedule) return this.schedule;
+    if (this.formatId) return formatById(this.formatId).config;
     return scheduleFor(this.playerCount);
   }
 
@@ -49,6 +54,22 @@ export class Tournament {
       );
     }
     this.playerCount = playerCount;
+    this.formatId = null;
+  }
+
+  setFormat(formatId) {
+    if (this.status !== 'setup') {
+      throw new Error('can only choose a format during setup');
+    }
+    const format = formatById(formatId);
+    if (!format) throw new Error(`unknown format: ${formatId}`);
+    if (this.entrants.length > format.config.seatCount) {
+      throw new Error(
+        `already have ${this.entrants.length} entrants; remove some before switching to ${format.label}`
+      );
+    }
+    this.formatId = formatId;
+    this.playerCount = format.players;
   }
 
   addEntrant(name) {
@@ -71,8 +92,8 @@ export class Tournament {
   }
 
   setTableNames(names) {
-    if (!Array.isArray(names) || names.length !== 3) {
-      throw new Error('need exactly 3 table names');
+    if (!Array.isArray(names)) {
+      throw new Error('table names must be a list');
     }
     this.tableNames = names.map((n, i) => (n ?? '').trim() || `Table ${i + 1}`);
   }
@@ -82,10 +103,50 @@ export class Tournament {
     if (this.entrants.length !== this.config.seatCount) {
       throw new Error(`need exactly ${this.config.seatCount} entrants to start`);
     }
+    const needTables = this.config.tablesPerRound;
+    for (let i = this.tableNames.length; i < needTables; i++) {
+      this.tableNames.push(`Table ${i + 1}`);
+    }
+    this.tableNames = this.tableNames.slice(0, needTables);
     this.entrants.forEach((e, i) => (e.seat = i + 1));
     this.status = 'running';
     this.currentRound = 0;
     this.draft = { hands: {} };
+    this.schedule = structuredClone(this.config);
+  }
+
+  reconfigure(newTableCount) {
+    if (this.status !== 'running') {
+      throw new Error('can only reconfigure a running tournament');
+    }
+    if (this.draft && Object.keys(this.draft.hands).length > 0) {
+      throw new Error('finish or clear the current round before changing tables');
+    }
+    const cfg = this.config;
+    const played = this.currentRound;
+    const seats = this.entrants.map((e) => e.seat);
+    const usedPartners = [];
+    const byeCounts = {};
+    for (let r = 0; r < played; r++) {
+      for (const tbl of cfg.schedule[r]) usedPartners.push([...tbl.teamA], [...tbl.teamB]);
+      for (const s of cfg.byesByRound[r]) byeCounts[s] = (byeCounts[s] ?? 0) + 1;
+    }
+
+    const { rounds: cont } = extendSchedule({ seats, tables: newTableCount, usedPartners, byeCounts });
+    if (cont.length === 0) return { added: 0 };
+
+    const movement = Array.from({ length: newTableCount }, (_, i) => i);
+    this.schedule = {
+      ...cfg,
+      tablesPerRound: newTableCount,
+      roundCount: played + cont.length,
+      schedule: cfg.schedule.slice(0, played).concat(cont.map((r) => r.tables)),
+      byesByRound: cfg.byesByRound.slice(0, played).concat(cont.map((r) => r.byes)),
+      physicalTableByRound: cfg.physicalTableByRound
+        .slice(0, played)
+        .concat(cont.map(() => [...movement])),
+    };
+    return { added: cont.length };
   }
 
   playingSeatsForRound(roundIndex) {
@@ -181,23 +242,27 @@ export class Tournament {
   toJSON() {
     return {
       playerCount: this.playerCount,
+      formatId: this.formatId,
       status: this.status,
       entrants: this.entrants,
       tableNames: this.tableNames,
       currentRound: this.currentRound,
       results: this.results,
       draft: this.draft,
+      schedule: this.schedule,
     };
   }
 
   static fromJSON(obj) {
     const t = new Tournament(obj.playerCount ?? 12);
+    t.formatId = obj.formatId ?? null;
     t.status = obj.status;
     t.entrants = obj.entrants ?? [];
     t.tableNames = obj.tableNames ?? ['Table 1', 'Table 2', 'Table 3'];
     t.currentRound = obj.currentRound ?? null;
     t.results = obj.results ?? [];
     t.draft = obj.draft ?? null;
+    t.schedule = obj.schedule ?? null;
     return t;
   }
 

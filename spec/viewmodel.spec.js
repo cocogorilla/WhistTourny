@@ -2,6 +2,7 @@ import { Tournament } from '../src/tournament.js';
 import {
   currentPhase,
   grandsLabel,
+  avgLabel,
   standingsView,
   confirmedRounds,
   tableEntry,
@@ -45,6 +46,16 @@ describe('viewmodel', () => {
     it('shows successful grands in parentheses, or just 0', () => {
       expect(grandsLabel({ grands: 3, succGrands: 1 })).toBe('3 (1✓)');
       expect(grandsLabel({ grands: 0, succGrands: 0 })).toBe('0');
+    });
+  });
+
+  describe('avgLabel', () => {
+    it('formats points-per-round to one decimal', () => {
+      expect(avgLabel({ roundsPlayed: 2, avgPerRound: 6 })).toBe('6.0');
+      expect(avgLabel({ roundsPlayed: 3, avgPerRound: 4.333333 })).toBe('4.3');
+    });
+    it('shows a dash when no rounds have been played', () => {
+      expect(avgLabel({ roundsPlayed: 0, avgPerRound: 0 })).toBe('–');
     });
   });
 
@@ -248,6 +259,26 @@ describe('viewmodel', () => {
         { points: 0, bid: 'nello' },
       ]);
       expect(editTables(t, 0).edited).toBe(true);
+    });
+
+    it('renders each round at its true table count and byes after a drop', () => {
+      const t = new Tournament();
+      Array.from({ length: 16 }, (_, i) => `P${i + 1}`).forEach((n) => t.addEntrant(n));
+      t.setFormat('16x4');
+      t.start();
+      const two = [{ points: 1, bid: 'nello' }, { points: 1, bid: 'nello' }];
+      const play = () => {
+        for (const s of t.playingSeatsForRound(t.currentRound)) t.recordEntrantRound(s, two);
+        t.confirmRound();
+      };
+      play();
+      play();
+      t.reconfigure(3);
+      play();
+      expect(editTables(t, 0).tables.length).toBe(4);
+      expect(editTables(t, 0).byes.length).toBe(0);
+      expect(editTables(t, 2).tables.length).toBe(3);
+      expect(editTables(t, 2).byes.length).toBe(4);
     });
   });
 });

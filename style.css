@@ -140,6 +140,7 @@ table.standings tr.leader td { background: rgba(255, 209, 102, 0.08); }
 .tie-flag { color: var(--gold); }
 td.byes.no-bye { color: var(--gold); font-weight: 700; }
 .pts { font-weight: 700; }
+td.avg { font-variant-numeric: tabular-nums; }
 .g { color: var(--grand); }
 .n { color: var(--nello); }
 
@@ -208,6 +209,8 @@ td.byes.no-bye { color: var(--gold); font-weight: 700; }
 .modal-title { font-weight: 800; color: var(--gold); font-size: 1.2rem; margin-bottom: 0.6rem; }
 .modal-body { font-size: 1.05rem; line-height: 1.45; margin-bottom: 1.2rem; }
 .modal-close { width: 100%; }
+.modal-actions { display: flex; gap: 0.6rem; }
+.modal-actions button { flex: 1; }
 
 .winner-banner {
   background: linear-gradient(135deg, var(--grand-bg), var(--nello-bg));

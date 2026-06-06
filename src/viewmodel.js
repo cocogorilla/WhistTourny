@@ -9,11 +9,17 @@ export function grandsLabel(row) {
   return `${row.grands} (${row.succGrands}✓)`;
 }
 
+export function avgLabel(row) {
+  if (!row.roundsPlayed) return '–';
+  return row.avgPerRound.toFixed(1);
+}
+
 export function standingsView(t) {
   const rows = t.standings();
   return rows.map((row) => ({
     ...row,
     grandsLabel: grandsLabel(row),
+    avgLabel: avgLabel(row),
     isLeader: row.rank === 1,
   }));
 }

@@ -1,5 +1,5 @@
 import { Tournament } from './src/tournament.js';
-import { SCHEDULES, SUPPORTED_COUNTS, MAX_SEATS } from './src/schedule.js';
+import { SUPPORTED_COUNTS, MAX_SEATS, formatsForCount } from './src/schedule.js';
 import {
   currentPhase,
   standingsView,
@@ -27,6 +27,7 @@ const MERLE_KEY = 'whist-merle-shown';
 let t = load() ?? new Tournament();
 let tab = 'seating';
 let setupStep = 1;
+let setupFormatId = null;
 let editRoundIdx = null;
 let merleSeen = null;
 let merleShown = loadMerleShown();
@@ -42,9 +43,7 @@ function loadMerleShown() {
 function saveMerleShown() {
   try {
     localStorage.setItem(MERLE_KEY, JSON.stringify(merleShown));
-  } catch {
-    /* storage unavailable — the in-memory list still prevents repeats this session */
-  }
+  } catch {}
 }
 
 function load() {
@@ -90,7 +89,6 @@ const merleSig = () => {
   return ctx ? `${ctx.roundIndex}:${ctx.points}` : null;
 };
 
-// Pop a forced-acknowledge modal the first time Merle's latest round changes.
 function maybeShowMerle() {
   const ctx = merleContext(t.entrants, t.results);
   if (!ctx) return;
@@ -98,7 +96,7 @@ function maybeShowMerle() {
   if (sig === merleSeen) return;
   merleSeen = sig;
   const line = nextMerleRoast(ctx.points, merleShown, roastSeed());
-  if (!line) return; // he's heard them all — let Merle be
+  if (!line) return;
   merleShown.push(line);
   saveMerleShown();
   showModal('📣 A word about Merle', line);
@@ -118,6 +116,63 @@ function showModal(title, line) {
   document.addEventListener('keydown', onKey);
   document.body.appendChild(overlay);
   $('.modal-close', overlay).focus();
+}
+
+function showConfirm(title, body, { confirmLabel = 'Confirm', cancelLabel = 'Cancel', onConfirm }) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-title">${esc(title)}</div>
+    <div class="modal-body">${esc(body)}</div>
+    <div class="modal-actions">
+      <button class="ghost modal-cancel">${esc(cancelLabel)}</button>
+      <button class="primary modal-ok">${esc(confirmLabel)}</button>
+    </div>
+  </div>`;
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+  $('.modal-cancel', overlay).onclick = close;
+  $('.modal-ok', overlay).onclick = () => { close(); onConfirm(); };
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(overlay);
+  $('.modal-cancel', overlay).focus();
+}
+
+function doDropTable() {
+  const current = tableEntry(t).tablesTotal;
+  const target = current - 1;
+  if (target < 1) return;
+  const sittingOut = t.entrants.length - target * 4;
+  showConfirm(
+    `Drop to ${target} ${target === 1 ? 'table' : 'tables'}?`,
+    `Scores so far are kept. From this round on, ${sittingOut} sit out each round (rotating byes) and partners are re-drawn so nobody repeats.`,
+    {
+      confirmLabel: `Drop to ${target}`,
+      onConfirm: () => {
+        let result;
+        try {
+          result = t.reconfigure(target);
+        } catch (err) {
+          alert(err.message);
+          return;
+        }
+        if (result.added === 0) {
+          showConfirm(
+            'No clean rounds left',
+            `Dropping to ${target} tables now would force repeat partnerships. End the tournament here, or keep playing the current ${current}-table schedule?`,
+            {
+              confirmLabel: 'End tournament',
+              cancelLabel: 'Keep playing',
+              onConfirm: () => commit(() => t.end()),
+            }
+          );
+          return;
+        }
+        save();
+        render();
+      },
+    }
+  );
 }
 
 function render() {
@@ -225,30 +280,56 @@ function setupSignInStep() {
     </div>`;
 }
 
+function selectedFormatId() {
+  const formats = formatsForCount(t.entrants.length);
+  return formats.some((f) => f.id === setupFormatId) ? setupFormatId : formats[0]?.id ?? null;
+}
+
 function setupConfirmStep() {
   const n = t.entrants.length;
-  const cfg = SCHEDULES[n];
-  let body;
-  if (cfg) {
-    const byes = cfg.byesByRound[0].length;
-    const sub = byes
-      ? `${cfg.roundCount} rounds · ${byes} sit out each round (shared fairly)`
-      : `${cfg.roundCount} rounds · everyone partners everyone · no byes`;
-    body = `<div class="format-n">${n}-player format</div><div class="muted">${sub}</div>`;
-  } else {
-    body = `<div class="format-n">Hold up — ${n} ${n === 1 ? 'player' : 'players'}</div>
-      <p class="muted">${unsupportedCountMessage(n, SUPPORTED_COUNTS, roastSeed())}</p>`;
+  const formats = formatsForCount(n);
+  if (!formats.length) {
+    return `
+      <h2>Set up · Step 3 of 3 — Confirm the field</h2>
+      <div class="card">
+        <h3>You've signed in ${n} ${n === 1 ? 'player' : 'players'}</h3>
+        <div class="format-n">Hold up — ${n} ${n === 1 ? 'player' : 'players'}</div>
+        <p class="muted">${unsupportedCountMessage(n, SUPPORTED_COUNTS, roastSeed())}</p>
+      </div>
+      <div class="toolbar wizard-nav">
+        <button data-action="setup-back">◀ Sign in</button>
+        <span class="spacer"></span>
+        <button class="primary" disabled>Start tournament ▶</button>
+      </div>`;
   }
+  const selId = selectedFormatId();
+  const opts = formats
+    .map((f) => {
+      const byes = f.config.byesByRound[0].length;
+      const sub = byes
+        ? `${f.config.roundCount} rounds · ${byes} sit out each round (shared fairly)`
+        : `${f.config.roundCount} rounds · everyone partners everyone · no byes`;
+      return `<button class="card format-opt ${f.id === selId ? 'selected' : ''}" data-format="${f.id}">
+        <div class="format-n">${esc(f.label)}</div>
+        <div class="muted">${sub}</div>
+      </button>`;
+    })
+    .join('');
+  const intro =
+    formats.length > 1
+      ? `<p class="muted">Two ways to run ${n}: more tables means everyone plays (and a longer night); fewer tables means rotating byes. Pick one — you can drop a table mid-game either way.</p>`
+      : '';
   return `
     <h2>Set up · Step 3 of 3 — Confirm the field</h2>
     <div class="card">
-      <h3>You've signed in ${n} ${n === 1 ? 'player' : 'players'}</h3>
-      ${body}
+      <h3>You've signed in ${n} players</h3>
+      ${intro}
     </div>
+    <div class="cards" style="margin-top:0.75rem">${opts}</div>
     <div class="toolbar wizard-nav">
       <button data-action="setup-back">◀ Sign in</button>
       <span class="spacer"></span>
-      <button class="primary" data-action="start" ${cfg ? '' : 'disabled'}>Start tournament ▶</button>
+      <button class="primary" data-action="start">Start tournament ▶</button>
     </div>`;
 }
 
@@ -292,10 +373,15 @@ function entryView() {
     ? `<div class="remaining">${benchQuip(v.roundNumber)} (nothing to enter): ${v.byes.map((e) => esc(e.name)).join(', ')}</div>`
     : '';
   const cards = v.tables.map((tbl) => tableCard(tbl)).join('');
+  const canDrop = t.enteredSeats().length === 0 && v.tablesTotal > 1;
+  const dropBtn = canDrop
+    ? '<button class="ghost" data-action="drop-table" title="Someone left? Drop a table and play on with byes.">Drop a table ▾</button>'
+    : '';
   return `
     <div class="toolbar">
       <h2 style="margin:0">Round ${v.roundNumber} — enter scores by table</h2>
       <span class="pill entry-pill">${v.tablesDone} / ${v.tablesTotal} tables in</span>
+      ${dropBtn}
       <span class="spacer"></span>
       <button class="primary" data-action="confirm" ${v.canConfirm ? '' : 'disabled'}>
         Confirm round ✓
@@ -392,6 +478,7 @@ function standingsTable(final) {
         <td class="rank">${r.rank}${r.tied ? ' <span class="tie-flag" title="tied — settle it!">⚑</span>' : ''}</td>
         <td>${esc(r.name)} ${r.badges.map((b) => `<span class="badge" data-tip="${esc(b.title)}" aria-label="${esc(b.title)}">${b.icon}</span>`).join('')}</td>
         <td class="pts">${r.points}</td>
+        <td class="muted avg">${r.avgLabel}</td>
         <td class="g">${r.grandsLabel}</td>
         <td class="n">${r.nellos}</td>
         <td class="muted">${r.roundsPlayed}</td>
@@ -406,10 +493,10 @@ function standingsTable(final) {
     ${kennyWatch()}
     <h2>${final ? 'Final standings' : 'Standings'}</h2>
     <table class="standings">
-      <thead><tr><th>#</th><th>Entrant</th><th>Pts</th><th>Grands</th><th>Nellos</th><th>Rounds</th>${showByes ? '<th>Byes</th>' : ''}</tr></thead>
+      <thead><tr><th>#</th><th>Entrant</th><th>Pts</th><th title="points per round played">Avg</th><th>Grands</th><th>Nellos</th><th>Rounds</th>${showByes ? '<th>Byes</th>' : ''}</tr></thead>
       <tbody>${body}</tbody>
     </table>
-    <p class="muted" style="margin-top:0.75rem">${tieNote}${showByes ? ' &nbsp;·&nbsp; <b>Byes</b> = rounds sat out; someone leading with 0 byes has played more hands than the rest.' : ''}</p>`;
+    <p class="muted" style="margin-top:0.75rem">${tieNote} &nbsp;·&nbsp; <b>Avg</b> = points per round played (the fair comparison when byes differ).${showByes ? ' &nbsp;·&nbsp; <b>Byes</b> = rounds sat out; someone leading with 0 byes has played more hands than the rest.' : ''}</p>`;
 }
 
 function kennyWatch() {
@@ -418,9 +505,7 @@ function kennyWatch() {
   let partner = 'your partner';
   try {
     partner = t.assignment(ctx.roundIndex, ctx.seat).partner.name;
-  } catch {
-    /* never let a gag crash the standings */
-  }
+  } catch {}
   const line = kennyRoastLine(kennyRoastCategory(ctx), ctx.roundIndex, partner);
   return `<div class="kenny-watch">🎯 <b>Kenny Watch</b> — ${esc(line)}</div>`;
 }
@@ -458,8 +543,11 @@ function wire(phase) {
     if (tabBtn) { tab = tabBtn.dataset.tab; render(); return; }
     if (action === 'setup-next') { setupStep = Math.min(3, setupStep + 1); render(); return; }
     if (action === 'setup-back') { setupStep = Math.max(1, setupStep - 1); render(); return; }
-    if (action === 'start') commit(() => { t.setPlayerCount(t.entrants.length); t.start(); });
+    const fmtBtn = target.closest('[data-format]');
+    if (fmtBtn) { setupFormatId = fmtBtn.dataset.format; render(); return; }
+    if (action === 'start') commit(() => { t.setFormat(selectedFormatId()); t.start(); });
     else if (action === 'confirm') commit(() => { t.confirmRound(); tab = 'seating'; });
+    else if (action === 'drop-table') doDropTable();
     else if (action === 'save-table') saveTable(Number(target.closest('[data-table]').dataset.table));
     else if (action === 'save-edit-table') saveEditTable(Number(target.closest('[data-table]').dataset.table));
     else if (removeBtn) commit(() => t.entrants.splice(Number(removeBtn.dataset.remove), 1));
@@ -472,7 +560,6 @@ function wire(phase) {
     }
   };
 
-  // only one team scores a hand
   app.oninput = (ev) => {
     const box = ev.target.closest('.team-pts');
     if (!box || !(Number(box.value) > 0)) return;
@@ -500,7 +587,6 @@ function wire(phase) {
   }
 }
 
-// Surgical update (no re-render) so other tables' unsaved inputs survive.
 function saveTable(tableIndex) {
   const card = $(`.table-entry[data-table="${tableIndex}"]`);
   if (!card) return;
@@ -540,6 +626,8 @@ function refreshEntryStatus() {
   if (pill) pill.textContent = `${v.tablesDone} / ${v.tablesTotal} tables in`;
   const confirmBtn = $('[data-action="confirm"]');
   if (confirmBtn) confirmBtn.disabled = !v.canConfirm;
+  const dropBtn = $('[data-action="drop-table"]');
+  if (dropBtn && t.enteredSeats().length > 0) dropBtn.remove();
   v.tables.forEach((tbl) => {
     const card = $(`.table-entry[data-table="${tbl.table}"]`);
     if (!card) return;
@@ -606,6 +694,7 @@ function doImport(ev) {
       t = Tournament.fromJSON(JSON.parse(reader.result));
       editRoundIdx = null;
       setupStep = 1;
+      setupFormatId = null;
       tab = 'seating';
       merleSeen = merleSig();
       merleShown = [];
@@ -624,6 +713,7 @@ function doNew() {
   t = new Tournament();
   editRoundIdx = null;
   setupStep = 1;
+  setupFormatId = null;
   tab = 'seating';
   merleSeen = merleSig();
   merleShown = [];

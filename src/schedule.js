@@ -1,3 +1,5 @@
+import { extendSchedule } from './extend.js';
+
 export const TABLES_PER_ROUND = 3;
 
 const WH12_MOD = 11;
@@ -111,12 +113,38 @@ const CONFIG_16 = cyclicConfig({
   movement: [[0, 1, 2], [0, 1, 2], [0, 2, 1], [0, 2, 1]],
 });
 
+const CONFIG_16x4 = (() => {
+  const seats = Array.from({ length: 16 }, (_, i) => i + 1);
+  const { rounds } = extendSchedule({ seats, tables: 4 });
+  return {
+    players: 16,
+    seatCount: 16,
+    roundCount: rounds.length,
+    tablesPerRound: 4,
+    schedule: rounds.map((r) => r.tables),
+    byesByRound: rounds.map((r) => r.byes),
+    physicalTableByRound: rounds.map(() => [0, 1, 2, 3]),
+  };
+})();
+
 export const SCHEDULES = {
   12: CONFIG_12,
   14: CONFIG_14,
   15: CONFIG_15,
   16: CONFIG_16,
 };
+
+export const FORMATS = [
+  { id: '12', players: 12, config: CONFIG_12, label: '12 players · 3 tables · no byes' },
+  { id: '14', players: 14, config: CONFIG_14, label: '14 players · 3 tables · byes' },
+  { id: '15', players: 15, config: CONFIG_15, label: '15 players · 3 tables · byes' },
+  { id: '16', players: 16, config: CONFIG_16, label: '16 players · 3 tables · byes' },
+  { id: '16x4', players: 16, config: CONFIG_16x4, label: '16 players · 4 tables · no byes' },
+];
+
+export const formatsForCount = (players) => FORMATS.filter((f) => f.players === players);
+
+export const formatById = (id) => FORMATS.find((f) => f.id === id) ?? null;
 
 export const SUPPORTED_COUNTS = Object.keys(SCHEDULES)
   .map(Number)

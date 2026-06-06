@@ -103,6 +103,38 @@ describe('computeStandings', () => {
     expect(idxA).toBeLessThan(idxB);
   });
 
+  it('reports points-per-round averaged over rounds actually played (not byes)', () => {
+    const results = [
+      round({ 1: [[4, 'nello'], [6, 'nello']], 2: [[3, 'nello'], [3, 'nello']] }),
+      round({ 1: [[2, 'nello'], [0, 'nello']] }), // seat 2 on bye this round
+    ];
+    const s = computeStandings(roster(), results);
+    // seat 1: 10 + 2 = 12 points over 2 rounds played => 6
+    expect(bySeat(s, 1).avgPerRound).toBe(6);
+    // seat 2: 6 points over 1 round played (1 bye) => 6, NOT 3
+    expect(bySeat(s, 2).roundsPlayed).toBe(1);
+    expect(bySeat(s, 2).avgPerRound).toBe(6);
+  });
+
+  it('avgPerRound is 0 (never NaN) when no rounds have been played', () => {
+    const s = computeStandings(roster(), []);
+    s.forEach((row) => expect(row.avgPerRound).toBe(0));
+  });
+
+  it('does NOT let the average change the ranking order (display-only)', () => {
+    // seat 3 has a higher per-round average but fewer total points than seat 2.
+    const results = [
+      round({ 2: [[3, 'nello'], [2, 'nello']], 3: [[4, 'nello'], [4, 'nello']] }),
+      round({ 2: [[3, 'nello'], [2, 'nello']] }), // seat 3 on bye → fewer rounds, higher avg
+    ];
+    const s = computeStandings(roster(), results);
+    expect(bySeat(s, 2).points).toBe(10); // 5 + 5 over 2 rounds → avg 5
+    expect(bySeat(s, 3).points).toBe(8); //  8 over 1 round    → avg 8
+    expect(bySeat(s, 3).avgPerRound).toBeGreaterThan(bySeat(s, 2).avgPerRound);
+    // ...yet seat 2 still ranks ahead of seat 3 on total points.
+    expect(s.indexOf(bySeat(s, 2))).toBeLessThan(s.indexOf(bySeat(s, 3)));
+  });
+
   it('uses standard competition ranking (1,2,2,4) around a tie', () => {
     const results = [
       round({
