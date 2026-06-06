@@ -185,6 +185,30 @@ td.byes.no-bye { color: var(--gold); font-weight: 700; }
 }
 .kenny-watch b { color: var(--grand); }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--gold);
+  border-radius: 14px;
+  padding: 1.5rem;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+.modal-title { font-weight: 800; color: var(--gold); font-size: 1.2rem; margin-bottom: 0.6rem; }
+.modal-body { font-size: 1.05rem; line-height: 1.45; margin-bottom: 1.2rem; }
+.modal-close { width: 100%; }
+
 .winner-banner {
   background: linear-gradient(135deg, var(--grand-bg), var(--nello-bg));
   border: 1px solid var(--gold);

@@ -133,24 +133,63 @@ export const COUNT_ROASTS = [
   '{n} does not seat cleanly at three tables. Land on {supported} — fold two into one entrant, or drag in one more.',
 ];
 
-export function unsupportedCountMessage(n, supported) {
+export function unsupportedCountMessage(n, supported, seed = n) {
   const bank = isPrime(n) ? PRIME_ROASTS : COUNT_ROASTS;
-  return pick(bank, n).replaceAll('{n}', String(n)).replaceAll('{supported}', supported.join(', '));
+  return pick(bank, seed).replaceAll('{n}', String(n)).replaceAll('{supported}', supported.join(', '));
+}
+
+function findPlayerLatest(entrants, results, name) {
+  const player = entrants.find((e) => (e.name ?? '').trim().toLowerCase() === name);
+  if (!player) return null;
+  for (let i = results.length - 1; i >= 0; i--) {
+    const hands = results[i].hands[player.seat];
+    if (hands) return { seat: player.seat, roundIndex: i, hands };
+  }
+  return null;
 }
 
 export function kennyContext(entrants, results) {
-  const kenny = entrants.find((e) => (e.name ?? '').trim().toLowerCase() === 'kenny');
-  if (!kenny) return null;
-  for (let i = results.length - 1; i >= 0; i--) {
-    const hands = results[i].hands[kenny.seat];
-    if (hands) {
-      return {
-        seat: kenny.seat,
-        roundIndex: i,
-        bids: hands.map((h) => h.bid),
-        points: hands.map((h) => h.points),
-      };
-    }
-  }
-  return null;
+  const r = findPlayerLatest(entrants, results, 'kenny');
+  if (!r) return null;
+  return {
+    seat: r.seat,
+    roundIndex: r.roundIndex,
+    bids: r.hands.map((h) => h.bid),
+    points: r.hands.map((h) => h.points),
+  };
+}
+
+export const MERLE_ROASTS = {
+  positive: [
+    'Even a blind squirrel finds a nut once in a while, Merle.',
+    'Merle put up points. Somewhere a broken clock feels seen.',
+    'Points for Merle?! Quick, somebody frame the scoreboard.',
+    'Merle scored. The cards must have felt sorry for you.',
+    'Merle contributed! There truly is a first time for everything.',
+  ],
+  zero: [
+    'Blame the cards, Merle. It is your only out.',
+    'A clean zero, Merle. Must have been the cards. Definitely the cards.',
+    'Zero again, Merle. At this point it is a lifestyle.',
+    'Nothing for Merle — blame the cards, the wind, the tilt of the earth. Anything but you.',
+    'An unsurprising goose egg. The surprising part? Ask Merle how he remembers the hand being scored.',
+  ],
+};
+
+// Pick a Merle line he hasn't been shown yet (non-repeat). Returns null once
+// the whole category has been seen — at which point we let him off the hook.
+export function nextMerleRoast(points, shown, seed) {
+  const bank = points > 0 ? MERLE_ROASTS.positive : MERLE_ROASTS.zero;
+  const unseen = bank.filter((line) => !shown.includes(line));
+  return unseen.length ? pick(unseen, seed) : null;
+}
+
+export function merleContext(entrants, results) {
+  const r = findPlayerLatest(entrants, results, 'merle');
+  if (!r) return null;
+  return {
+    seat: r.seat,
+    roundIndex: r.roundIndex,
+    points: r.hands.reduce((sum, h) => sum + h.points, 0),
+  };
 }

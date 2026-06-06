@@ -12,6 +12,9 @@ import {
   kennyContext,
   unsupportedCountMessage,
   PRIME_ROASTS,
+  nextMerleRoast,
+  merleContext,
+  MERLE_ROASTS,
 } from '../src/flavor.js';
 
 const round = (map) => {
@@ -136,6 +139,91 @@ describe('flavor', () => {
     });
   });
 
+  describe('Merle modal roast', () => {
+    it('roasts a positive round and a zero round from the right bank', () => {
+      expect(MERLE_ROASTS.positive).toContain(nextMerleRoast(7, [], 0));
+      expect(MERLE_ROASTS.zero).toContain(nextMerleRoast(0, [], 0));
+    });
+
+    it('merleContext finds Merle and totals his latest round', () => {
+      const entrants = [{ seat: 1, name: 'Merle' }, { seat: 2, name: 'Sue' }];
+      const results = [round({ 1: [[3, 'grand'], [4, 'nello']] })];
+      const ctx = merleContext(entrants, results);
+      expect(ctx.seat).toBe(1);
+      expect(ctx.roundIndex).toBe(0);
+      expect(ctx.points).toBe(7);
+    });
+
+    it('merleContext is null without a Merle', () => {
+      expect(merleContext([{ seat: 1, name: 'Bob' }], [])).toBeNull();
+    });
+
+    it('never repeats an already-shown line', () => {
+      const shown = [MERLE_ROASTS.positive[0], MERLE_ROASTS.positive[2]];
+      const line = nextMerleRoast(5, shown, 1);
+      expect(shown).not.toContain(line);
+      expect(MERLE_ROASTS.positive).toContain(line);
+    });
+
+    it('cycles the whole bank once, then goes quiet (returns null)', () => {
+      const shown = [];
+      for (let i = 0; i < MERLE_ROASTS.positive.length; i++) {
+        const line = nextMerleRoast(5, shown, i);
+        expect(line).withContext(`pick ${i}`).not.toBeNull();
+        expect(shown).not.toContain(line);
+        shown.push(line);
+      }
+      expect(new Set(shown).size).toBe(MERLE_ROASTS.positive.length);
+      expect(nextMerleRoast(5, shown, 0)).toBeNull(); // seen them all → done
+    });
+
+    it('exhausts the positive and zero banks independently', () => {
+      expect(nextMerleRoast(5, [...MERLE_ROASTS.positive], 0)).toBeNull();
+      expect(nextMerleRoast(0, [...MERLE_ROASTS.positive], 0)).not.toBeNull(); // zero bank untouched
+    });
+  });
+
+  describe('Kenny and Merle never cross wires', () => {
+    // The only real coupling is the shared findPlayerLatest lookup: each must
+    // resolve to its OWN player even when both are in the roster and partnered.
+    it('resolves each to its own seat/data when both played the same round (as partners)', () => {
+      const entrants = [
+        { seat: 1, name: 'Kenny' },
+        { seat: 2, name: 'Merle' }, // Kenny's partner — shares the team score
+        { seat: 3, name: 'Sue' },
+        { seat: 4, name: 'Bo' },
+      ];
+      const results = [
+        round({
+          1: [[5, 'grand'], [0, 'nello']], // Kenny: his own bids
+          2: [[5, 'grand'], [0, 'grand']], // Merle: shares points, different bids
+          3: [[0, 'nello'], [4, 'nello']],
+          4: [[0, 'nello'], [4, 'nello']],
+        }),
+      ];
+      const k = kennyContext(entrants, results);
+      const m = merleContext(entrants, results);
+      expect(k.seat).toBe(1);
+      expect(m.seat).toBe(2);
+      expect(k.seat).not.toBe(m.seat);
+      expect(k.bids).toEqual(['grand', 'nello']); // Kenny's, not Merle's
+      expect(m.points).toBe(5); // Merle's round total
+    });
+
+    it('tracks each independently across rounds when one is on bye', () => {
+      const entrants = [{ seat: 1, name: 'Kenny' }, { seat: 2, name: 'Merle' }];
+      const results = [
+        round({ 1: [[3, 'grand'], [3, 'grand']], 2: [[1, 'nello'], [1, 'nello']] }),
+        round({ 1: [[7, 'nello'], [0, 'nello']] }), // Merle on bye this round
+      ];
+      const k = kennyContext(entrants, results);
+      const m = merleContext(entrants, results);
+      expect(k.roundIndex).toBe(1); // Kenny's latest = round 2
+      expect(m.roundIndex).toBe(0); // Merle's latest played = round 1
+      expect(m.points).toBe(2);
+    });
+  });
+
   describe('unsupportedCountMessage', () => {
     const supported = [12, 14, 15, 16];
     const primeBankFor = (n) => PRIME_ROASTS.map((t) => t.replaceAll('{n}', String(n)));
@@ -152,6 +240,14 @@ describe('flavor', () => {
       const msg = unsupportedCountMessage(9, supported);
       expect(msg).toContain('12, 14, 15, 16');
       expect(primeBankFor(9)).not.toContain(msg);
+    });
+
+    it('rotates through the bank as the seed changes', () => {
+      const seen = new Set();
+      for (let s = 0; s < PRIME_ROASTS.length; s++) {
+        seen.add(unsupportedCountMessage(13, supported, s));
+      }
+      expect(seen.size).toBe(PRIME_ROASTS.length); // every prime line reachable
     });
   });
 });

@@ -17,14 +17,35 @@ import {
   kennyRoastCategory,
   kennyRoastLine,
   unsupportedCountMessage,
+  merleContext,
+  nextMerleRoast,
 } from './src/flavor.js';
 
 const STORAGE_KEY = 'whist-tourny-v1';
+const MERLE_KEY = 'whist-merle-shown';
 
 let t = load() ?? new Tournament();
 let tab = 'seating';
 let setupStep = 1;
 let editRoundIdx = null;
+let merleSeen = null;
+let merleShown = loadMerleShown();
+
+function loadMerleShown() {
+  try {
+    return JSON.parse(localStorage.getItem(MERLE_KEY)) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMerleShown() {
+  try {
+    localStorage.setItem(MERLE_KEY, JSON.stringify(merleShown));
+  } catch {
+    /* storage unavailable — the in-memory list still prevents repeats this session */
+  }
+}
 
 function load() {
   try {
@@ -50,6 +71,8 @@ const esc = (s) =>
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
+const roastSeed = () => Math.floor(Math.random() * 997);
+
 function commit(fn) {
   try {
     fn();
@@ -59,6 +82,42 @@ function commit(fn) {
   }
   save();
   render();
+  maybeShowMerle();
+}
+
+const merleSig = () => {
+  const ctx = merleContext(t.entrants, t.results);
+  return ctx ? `${ctx.roundIndex}:${ctx.points}` : null;
+};
+
+// Pop a forced-acknowledge modal the first time Merle's latest round changes.
+function maybeShowMerle() {
+  const ctx = merleContext(t.entrants, t.results);
+  if (!ctx) return;
+  const sig = `${ctx.roundIndex}:${ctx.points}`;
+  if (sig === merleSeen) return;
+  merleSeen = sig;
+  const line = nextMerleRoast(ctx.points, merleShown, roastSeed());
+  if (!line) return; // he's heard them all — let Merle be
+  merleShown.push(line);
+  saveMerleShown();
+  showModal('📣 A word about Merle', line);
+}
+
+function showModal(title, line) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-title">${esc(title)}</div>
+    <div class="modal-body">${esc(line)}</div>
+    <button class="primary modal-close">Yeah, yeah… close</button>
+  </div>`;
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+  $('.modal-close', overlay).onclick = close;
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(overlay);
+  $('.modal-close', overlay).focus();
 }
 
 function render() {
@@ -156,7 +215,7 @@ function setupSignInStep() {
         <button class="primary" type="submit" ${full ? 'disabled' : ''}>Add</button>
       </form>
       <p class="muted">Add people as they arrive. More than fit? Combine two into one entrant — they share a seat &amp; score. (Up to ${MAX_SEATS}.)</p>
-      ${full ? `<p class="muted">${unsupportedCountMessage(MAX_SEATS + 1, SUPPORTED_COUNTS)}</p>` : ''}
+      ${full ? `<p class="muted">${unsupportedCountMessage(MAX_SEATS + 1, SUPPORTED_COUNTS, roastSeed())}</p>` : ''}
       <ul class="seat-list">${seats || '<li class="muted">No one yet…</li>'}</ul>
     </div>
     <div class="toolbar wizard-nav">
@@ -178,7 +237,7 @@ function setupConfirmStep() {
     body = `<div class="format-n">${n}-player format</div><div class="muted">${sub}</div>`;
   } else {
     body = `<div class="format-n">Hold up — ${n} ${n === 1 ? 'player' : 'players'}</div>
-      <p class="muted">${unsupportedCountMessage(n, SUPPORTED_COUNTS)}</p>`;
+      <p class="muted">${unsupportedCountMessage(n, SUPPORTED_COUNTS, roastSeed())}</p>`;
   }
   return `
     <h2>Set up · Step 3 of 3 — Confirm the field</h2>
@@ -525,6 +584,7 @@ function saveEditTable(tableIndex) {
   if (saveBtn) saveBtn.textContent = 'Saved ✓';
   const roundBtn = $(`[data-edit-round="${editRoundIdx}"]`);
   if (roundBtn && !roundBtn.textContent.includes('✎')) roundBtn.textContent += ' ✎';
+  maybeShowMerle();
 }
 
 function doExport() {
@@ -547,6 +607,9 @@ function doImport(ev) {
       editRoundIdx = null;
       setupStep = 1;
       tab = 'seating';
+      merleSeen = merleSig();
+      merleShown = [];
+      saveMerleShown();
       save();
       render();
     } catch {
@@ -562,8 +625,12 @@ function doNew() {
   editRoundIdx = null;
   setupStep = 1;
   tab = 'seating';
+  merleSeen = merleSig();
+  merleShown = [];
+  saveMerleShown();
   save();
   render();
 }
 
+merleSeen = merleSig();
 render();
