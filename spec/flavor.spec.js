@@ -10,6 +10,8 @@ import {
   kennyRoastLine,
   KENNY_ROASTS,
   kennyContext,
+  unsupportedCountMessage,
+  PRIME_ROASTS,
 } from '../src/flavor.js';
 
 const round = (map) => {
@@ -130,6 +132,25 @@ describe('flavor', () => {
 
     it('kennyContext is null when nobody is named Kenny', () => {
       expect(kennyContext([{ seat: 1, name: 'Bob' }], [])).toBeNull();
+    });
+  });
+
+  describe('unsupportedCountMessage', () => {
+    const supported = [12, 14, 15, 16];
+    const primeBankFor = (n) => PRIME_ROASTS.map((t) => t.replaceAll('{n}', String(n)));
+
+    it('roasts prime counts (13, 17) with a prime-bank line naming the count', () => {
+      for (const n of [13, 17]) {
+        const msg = unsupportedCountMessage(n, supported);
+        expect(msg).toContain(String(n));
+        expect(primeBankFor(n)).withContext(`n=${n}`).toContain(msg);
+      }
+    });
+
+    it('gives non-primes a generic line with the supported sizes', () => {
+      const msg = unsupportedCountMessage(9, supported);
+      expect(msg).toContain('12, 14, 15, 16');
+      expect(primeBankFor(9)).not.toContain(msg);
     });
   });
 });

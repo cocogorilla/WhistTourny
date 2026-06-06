@@ -113,6 +113,31 @@ export function kennyRoastLine(category, seed, partnerName) {
   return pick(list, seed).replaceAll('{partner}', partnerName ?? 'your partner');
 }
 
+const isPrime = (n) => {
+  if (n < 2) return false;
+  for (let d = 2; d * d <= n; d++) if (n % d === 0) return false;
+  return true;
+};
+
+export const PRIME_ROASTS = [
+  'You seriously want to start a tournament with {n} players — a PRIME — and expect no complaints about fair play? Bold move.',
+  'Help me with the math: {n} ÷ 7 × 4.2, three rounds over the natural log of a shrug = NO CLEAR WINNER. Primes do not seat.',
+  '{n} is prime: indivisible, undefeated by long division, and completely unseatable at three tables. Hard pass.',
+  'Ah, {n}. Let me carry the one, divide by the vibes, multiply by the drama... nope. That is a prime, and primes start arguments.',
+  'A prime headcount? That is not a tournament, that is a math dare. We respectfully decline {n}.',
+  '{n} players means somebody plays {n}-over-4 tables at once, which is a war crime against arithmetic — and prime, to boot.',
+];
+
+export const COUNT_ROASTS = [
+  '{n}? We run {supported}. What did you expect, miracles? Combine two into one entrant or round up a straggler.',
+  '{n} does not seat cleanly at three tables. Land on {supported} — fold two into one entrant, or drag in one more.',
+];
+
+export function unsupportedCountMessage(n, supported) {
+  const bank = isPrime(n) ? PRIME_ROASTS : COUNT_ROASTS;
+  return pick(bank, n).replaceAll('{n}', String(n)).replaceAll('{supported}', supported.join(', '));
+}
+
 export function kennyContext(entrants, results) {
   const kenny = entrants.find((e) => (e.name ?? '').trim().toLowerCase() === 'kenny');
   if (!kenny) return null;

@@ -7,6 +7,7 @@ const EXPECT = {
   12: { roundCount: 11, byesPerRound: 0, byesPerSeat: 0, partnerExactly: 1, opposeExactly: 2 },
   14: { roundCount: 7, byesPerRound: 2, byesPerSeat: 1, partnerMax: 1, opposeMax: 1 },
   15: { roundCount: 5, byesPerRound: 3, byesPerSeat: 1, partnerMax: 1, opposeMax: 1 },
+  16: { roundCount: 4, byesPerRound: 4, byesPerSeat: 1, partnerMax: 1, opposeMax: 2 },
 };
 
 function tally(schedule) {
@@ -24,16 +25,16 @@ function tally(schedule) {
 }
 
 describe('player-count configs', () => {
-  it('exposes 12, 14, and 15', () => {
-    expect(Object.keys(SCHEDULES).map(Number).sort((a, b) => a - b)).toEqual([12, 14, 15]);
+  it('exposes 12, 14, 15, and 16', () => {
+    expect(Object.keys(SCHEDULES).map(Number).sort((a, b) => a - b)).toEqual([12, 14, 15, 16]);
   });
 
   it('scheduleFor throws on an unsupported count', () => {
     expect(() => scheduleFor(13)).toThrowError(/13/);
-    expect(() => scheduleFor(16)).toThrowError(/16/);
+    expect(() => scheduleFor(17)).toThrowError(/17/);
   });
 
-  for (const players of [12, 14, 15]) {
+  for (const players of [12, 14, 15, 16]) {
     describe(`${players} players`, () => {
       const cfg = SCHEDULES[players];
       const exp = EXPECT[players];

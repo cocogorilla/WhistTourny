@@ -24,7 +24,7 @@ describe('schedule accessors', () => {
 
   describe('playingSeats(config, roundIndex)', () => {
     it('lists the 12 seats playing that round, excluding byes', () => {
-      for (const players of [12, 14, 15]) {
+      for (const players of [12, 14, 15, 16]) {
         const cfg = SCHEDULES[players];
         for (let r = 0; r < cfg.roundCount; r++) {
           const playing = playingSeats(cfg, r);
@@ -41,6 +41,7 @@ describe('schedule accessors', () => {
       expect(byeSeats(SCHEDULES[12], 0)).toEqual([]);
       expect(byeSeats(SCHEDULES[15], 0).length).toBe(3);
       expect(byeSeats(SCHEDULES[14], 0).length).toBe(2);
+      expect(byeSeats(SCHEDULES[16], 0).length).toBe(4);
     });
 
     it('throws on an out-of-range round', () => {
@@ -50,7 +51,7 @@ describe('schedule accessors', () => {
 
   describe('seatColumn(config, roundIndex, seat)', () => {
     it('reports which table-column (0..2) a playing seat is in', () => {
-      for (const players of [12, 14, 15]) {
+      for (const players of [12, 14, 15, 16]) {
         const cfg = SCHEDULES[players];
         for (let r = 0; r < cfg.roundCount; r++) {
           cfg.schedule[r].forEach((t, col) => {

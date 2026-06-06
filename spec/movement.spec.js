@@ -5,6 +5,7 @@ const EXPECT = {
   12: { minTablesVisited: 3 },
   14: { minTablesVisited: 3 },
   15: { minTablesVisited: 2 },
+  16: { minTablesVisited: 2 },
 };
 
 const playedTableSequence = (cfg, seat) =>
@@ -26,7 +27,7 @@ const maxRunIgnoringByes = (seq) => {
 };
 
 describe('physical-table movement mapping', () => {
-  for (const players of [12, 14, 15]) {
+  for (const players of [12, 14, 15, 16]) {
     describe(`${players} players`, () => {
       const cfg = SCHEDULES[players];
       const exp = EXPECT[players];

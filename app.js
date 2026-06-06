@@ -16,6 +16,7 @@ import {
   kennyContext,
   kennyRoastCategory,
   kennyRoastLine,
+  unsupportedCountMessage,
 } from './src/flavor.js';
 
 const STORAGE_KEY = 'whist-tourny-v1';
@@ -155,6 +156,7 @@ function setupSignInStep() {
         <button class="primary" type="submit" ${full ? 'disabled' : ''}>Add</button>
       </form>
       <p class="muted">Add people as they arrive. More than fit? Combine two into one entrant — they share a seat &amp; score. (Up to ${MAX_SEATS}.)</p>
+      ${full ? `<p class="muted">${unsupportedCountMessage(MAX_SEATS + 1, SUPPORTED_COUNTS)}</p>` : ''}
       <ul class="seat-list">${seats || '<li class="muted">No one yet…</li>'}</ul>
     </div>
     <div class="toolbar wizard-nav">
@@ -175,8 +177,8 @@ function setupConfirmStep() {
       : `${cfg.roundCount} rounds · everyone partners everyone · no byes`;
     body = `<div class="format-n">${n}-player format</div><div class="muted">${sub}</div>`;
   } else {
-    body = `<div class="format-n">${n} players. Math is hard, huh?</div>
-      <p class="muted">We run 12, 14, or 15 — and somehow you wrangled up ${n}. What did you expect, miracles? Head back and either <b>combine</b> two folks into one entrant (the buddy system) or <b>round up</b> a straggler to land on ${SUPPORTED_COUNTS.join(', ')}.</p>`;
+    body = `<div class="format-n">Hold up — ${n} ${n === 1 ? 'player' : 'players'}</div>
+      <p class="muted">${unsupportedCountMessage(n, SUPPORTED_COUNTS)}</p>`;
   }
   return `
     <h2>Set up · Step 3 of 3 — Confirm the field</h2>

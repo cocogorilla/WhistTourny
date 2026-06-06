@@ -39,15 +39,13 @@ describe('Tournament — setup', () => {
     expect(() => t.addEntrant('   ')).toThrowError(/name/i);
   });
 
-  it('allows signing in past the default 12 format, up to the max of 15', () => {
+  it('allows signing in past the default 12 format, up to the max of 16', () => {
     // Sign-in is not capped by the currently selected format — people arrive
     // first, the format is confirmed afterward.
     const t = fresh(); // 12 entrants, default 12-config
-    t.addEntrant('Thirteen');
-    t.addEntrant('Fourteen');
-    t.addEntrant('Fifteen');
-    expect(t.entrants.length).toBe(15);
-    expect(() => t.addEntrant('Sixteen')).toThrowError(/15/);
+    ['Thirteen', 'Fourteen', 'Fifteen', 'Sixteen'].forEach((n) => t.addEntrant(n));
+    expect(t.entrants.length).toBe(16);
+    expect(() => t.addEntrant('Seventeen')).toThrowError(/16/);
   });
 
   it('cannot start without exactly 12 entrants', () => {
@@ -219,13 +217,13 @@ describe('Tournament — player-count configs', () => {
   it('rejects an unsupported player count at construction and via setPlayerCount', () => {
     expect(() => new Tournament(13)).toThrowError(/13/);
     const t = new Tournament(12);
-    expect(() => t.setPlayerCount(16)).toThrowError(/16/);
+    expect(() => t.setPlayerCount(17)).toThrowError(/17/);
   });
 
-  it('caps the roster at the config seat count', () => {
-    const t = build(15);
-    expect(t.entrants.length).toBe(15);
-    expect(() => t.addEntrant('overflow')).toThrowError(/15/);
+  it('caps the roster at the max supported count (16)', () => {
+    const t = build(16);
+    expect(t.entrants.length).toBe(16);
+    expect(() => t.addEntrant('overflow')).toThrowError(/16/);
   });
 
   it('cannot start a 14-config without exactly 14 entrants', () => {
@@ -259,7 +257,7 @@ describe('Tournament — player-count configs', () => {
     expect(t.isRoundComplete()).toBe(true);
   });
 
-  for (const count of [14, 15]) {
+  for (const count of [14, 15, 16]) {
     it(`plays a full ${count}-player tournament: everyone byes exactly once`, () => {
       const t = build(count);
       t.start();

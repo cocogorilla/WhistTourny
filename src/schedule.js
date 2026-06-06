@@ -52,7 +52,7 @@ const CONFIG_12 = {
 const identityMovement = (rounds) =>
   Array.from({ length: rounds }, () => [0, 1, 2]);
 
-function cyclicConfig({ players, step, rounds, byes0, starter }) {
+function cyclicConfig({ players, step, rounds, byes0, starter, movement }) {
   const shift = (seat, r) => ((seat - 1 + step * r) % players) + 1;
   const schedule = Array.from({ length: rounds }, (_, r) =>
     starter.map((t) => ({
@@ -70,7 +70,7 @@ function cyclicConfig({ players, step, rounds, byes0, starter }) {
     tablesPerRound: TABLES_PER_ROUND,
     schedule,
     byesByRound,
-    physicalTableByRound: identityMovement(rounds),
+    physicalTableByRound: movement ?? identityMovement(rounds),
   };
 }
 
@@ -98,10 +98,24 @@ const CONFIG_14 = cyclicConfig({
   ],
 });
 
+const CONFIG_16 = cyclicConfig({
+  players: 16,
+  step: 4,
+  rounds: 4,
+  byes0: [1, 2, 3, 4],
+  starter: [
+    { teamA: [5, 15], teamB: [16, 7] },
+    { teamA: [14, 10], teamB: [6, 9] },
+    { teamA: [13, 11], teamB: [8, 12] },
+  ],
+  movement: [[0, 1, 2], [0, 1, 2], [0, 2, 1], [0, 2, 1]],
+});
+
 export const SCHEDULES = {
   12: CONFIG_12,
   14: CONFIG_14,
   15: CONFIG_15,
+  16: CONFIG_16,
 };
 
 export const SUPPORTED_COUNTS = Object.keys(SCHEDULES)
