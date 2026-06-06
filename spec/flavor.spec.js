@@ -134,7 +134,15 @@ describe('flavor', () => {
       expect(ctx.points).toEqual([0, 0]);
     });
 
-    it('kennyContext is null when nobody is named Kenny', () => {
+    it('kennyContext recognizes the "K-Mac" alias in any case', () => {
+      const results = [round({ 1: [[0, 'grand'], [0, 'grand']] })];
+      expect(kennyContext([{ seat: 1, name: 'K-Mac' }], results)?.seat).toBe(1);
+      expect(kennyContext([{ seat: 1, name: 'k-mac' }], results)?.seat).toBe(1);
+      expect(kennyContext([{ seat: 1, name: 'K-MAC' }], results)?.seat).toBe(1);
+      expect(kennyContext([{ seat: 1, name: 'Kenny' }], results)?.seat).toBe(1);
+    });
+
+    it('kennyContext is null when nobody is Kenny or K-Mac', () => {
       expect(kennyContext([{ seat: 1, name: 'Bob' }], [])).toBeNull();
     });
   });
@@ -152,6 +160,13 @@ describe('flavor', () => {
       expect(ctx.seat).toBe(1);
       expect(ctx.roundIndex).toBe(0);
       expect(ctx.points).toBe(7);
+    });
+
+    it('merleContext matches any name containing "merle", any case', () => {
+      const results = [round({ 1: [[2, 'nello'], [0, 'nello']] })];
+      expect(merleContext([{ seat: 1, name: 'Uncle Merle' }], results)?.seat).toBe(1);
+      expect(merleContext([{ seat: 1, name: 'MERLE Jr.' }], results)?.seat).toBe(1);
+      expect(merleContext([{ seat: 1, name: 'merle&Bob' }], results)?.seat).toBe(1);
     });
 
     it('merleContext is null without a Merle', () => {

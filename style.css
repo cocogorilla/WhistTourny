@@ -46,6 +46,7 @@ header h1 { font-size: 1.4rem; margin: 0; }
   background-clip: text;
   color: transparent;
 }
+.version { color: var(--muted); font-size: 0.7rem; font-weight: 600; vertical-align: middle; }
 .status { color: var(--muted); font-weight: 600; }
 .nav { margin-left: auto; display: flex; gap: 0.5rem; }
 

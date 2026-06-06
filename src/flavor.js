@@ -138,8 +138,8 @@ export function unsupportedCountMessage(n, supported, seed = n) {
   return pick(bank, seed).replaceAll('{n}', String(n)).replaceAll('{supported}', supported.join(', '));
 }
 
-function findPlayerLatest(entrants, results, name) {
-  const player = entrants.find((e) => (e.name ?? '').trim().toLowerCase() === name);
+function findPlayerLatest(entrants, results, matches) {
+  const player = entrants.find((e) => matches((e.name ?? '').trim().toLowerCase()));
   if (!player) return null;
   for (let i = results.length - 1; i >= 0; i--) {
     const hands = results[i].hands[player.seat];
@@ -149,7 +149,8 @@ function findPlayerLatest(entrants, results, name) {
 }
 
 export function kennyContext(entrants, results) {
-  const r = findPlayerLatest(entrants, results, 'kenny');
+  const aliases = new Set(['kenny', 'k-mac']);
+  const r = findPlayerLatest(entrants, results, (name) => aliases.has(name));
   if (!r) return null;
   return {
     seat: r.seat,
@@ -183,7 +184,7 @@ export function nextMerleRoast(points, shown, seed) {
 }
 
 export function merleContext(entrants, results) {
-  const r = findPlayerLatest(entrants, results, 'merle');
+  const r = findPlayerLatest(entrants, results, (name) => name.includes('merle'));
   if (!r) return null;
   return {
     seat: r.seat,
