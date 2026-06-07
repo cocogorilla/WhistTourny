@@ -1,5 +1,6 @@
 import { scheduleFor, playingSeats, byeSeats, MAX_SEATS, formatById } from './schedule.js';
 import { extendSchedule } from './extend.js';
+import { assignMovement, movementHistory } from './variety.js';
 import { physicalSeating, assignmentForSeat } from './seating.js';
 import { computeStandings } from './standings.js';
 
@@ -135,16 +136,16 @@ export class Tournament {
     const { rounds: cont } = extendSchedule({ seats, tables: newTableCount, usedPartners, byeCounts });
     if (cont.length === 0) return { added: 0 };
 
-    const movement = Array.from({ length: newTableCount }, (_, i) => i);
+    const contTables = cont.map((r) => r.tables);
+    const history = movementHistory(cfg.schedule.slice(0, played), cfg.physicalTableByRound.slice(0, played));
+    const contMovement = assignMovement(contTables, newTableCount, history);
     this.schedule = {
       ...cfg,
       tablesPerRound: newTableCount,
       roundCount: played + cont.length,
-      schedule: cfg.schedule.slice(0, played).concat(cont.map((r) => r.tables)),
+      schedule: cfg.schedule.slice(0, played).concat(contTables),
       byesByRound: cfg.byesByRound.slice(0, played).concat(cont.map((r) => r.byes)),
-      physicalTableByRound: cfg.physicalTableByRound
-        .slice(0, played)
-        .concat(cont.map(() => [...movement])),
+      physicalTableByRound: cfg.physicalTableByRound.slice(0, played).concat(contMovement),
     };
     return { added: cont.length };
   }

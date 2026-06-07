@@ -462,6 +462,38 @@ describe('Tournament — format selection (4-table start)', () => {
     expect(restored.playingSeatsForRound(0).length).toBe(16);
   });
 
+  it('keeps people moving tables through a 4→3 drop (no doppelganger)', () => {
+    const t = sixteen();
+    t.setFormat('16x4');
+    t.start();
+    playRound(t);
+    playRound(t);
+    t.reconfigure(3);
+    while (t.status === 'running') playRound(t);
+
+    const cfg = t.config;
+    const tableOf = (r, seat) => {
+      const round = cfg.schedule[r];
+      for (let c = 0; c < round.length; c++) {
+        if ([...round[c].teamA, ...round[c].teamB].includes(seat)) return cfg.physicalTableByRound[r][c];
+      }
+      return null; // on bye
+    };
+    for (let seat = 1; seat <= 16; seat++) {
+      const seq = cfg.schedule.map((_, r) => tableOf(r, seat));
+      let best = 0;
+      let cur = 0;
+      let prev = null;
+      for (const x of seq) {
+        if (x === null) { cur = 0; prev = null; continue; }
+        cur = x === prev ? cur + 1 : 1;
+        prev = x;
+        if (cur > best) best = cur;
+      }
+      expect(best).withContext(`seat ${seat} run`).toBeLessThanOrEqual(2);
+    }
+  });
+
   it('edits past rounds against each round’s true seating across a 4→3 drop', () => {
     const t = sixteen();
     t.setFormat('16x4');

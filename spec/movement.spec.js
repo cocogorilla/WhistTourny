@@ -1,4 +1,4 @@
-import { SCHEDULES, playingSeats, byeSeats } from '../src/schedule.js';
+import { SCHEDULES, playingSeats, byeSeats, formatById } from '../src/schedule.js';
 import { TABLE_COUNT, physicalTableForSeat } from '../src/movement.js';
 
 const EXPECT = {
@@ -87,4 +87,40 @@ describe('physical-table movement mapping', () => {
       });
     });
   }
+
+  describe('16 players on 4 tables', () => {
+    const cfg = formatById('16x4').config;
+
+    it('maps the 4 columns to 4 distinct physical tables each round', () => {
+      cfg.physicalTableByRound.forEach((map, r) =>
+        expect([...map].sort((a, b) => a - b)).withContext(`round ${r + 1}`).toEqual([0, 1, 2, 3])
+      );
+    });
+
+    it('PREFERS MOVEMENT: no seat sits at one physical table > 2 rounds running', () => {
+      for (let seat = 1; seat <= 16; seat++) {
+        const seq = playedTableSequence(cfg, seat);
+        expect(maxRunIgnoringByes(seq)).withContext(`seat ${seat} sequence ${seq}`).toBeLessThanOrEqual(2);
+      }
+    });
+
+    it('sends every seat to at least 3 of the 4 tables (no doppelganger)', () => {
+      for (let seat = 1; seat <= 16; seat++) {
+        const visited = new Set(playedTableSequence(cfg, seat).filter((x) => x !== null));
+        expect(visited.size).withContext(`seat ${seat}`).toBeGreaterThanOrEqual(3);
+      }
+    });
+
+    it('seats 4 people at each of the 4 tables every round', () => {
+      for (let r = 0; r < cfg.roundCount; r++) {
+        const byTable = new Map();
+        for (const seat of playingSeats(cfg, r)) {
+          const t = physicalTableForSeat(cfg, r, seat);
+          byTable.set(t, (byTable.get(t) ?? 0) + 1);
+        }
+        expect(byTable.size).withContext(`round ${r + 1} tables used`).toBe(4);
+        for (const [, count] of byTable) expect(count).withContext(`round ${r + 1}`).toBe(4);
+      }
+    });
+  });
 });

@@ -1,4 +1,5 @@
 import { extendSchedule } from './extend.js';
+import { assignMovement, shuffleRounds } from './variety.js';
 
 export const TABLES_PER_ROUND = 3;
 
@@ -116,14 +117,19 @@ const CONFIG_16 = cyclicConfig({
 const CONFIG_16x4 = (() => {
   const seats = Array.from({ length: 16 }, (_, i) => i + 1);
   const { rounds } = extendSchedule({ seats, tables: 4 });
+  const { schedule, byesByRound } = shuffleRounds(
+    rounds.map((r) => r.tables),
+    rounds.map((r) => r.byes),
+    1604
+  );
   return {
     players: 16,
     seatCount: 16,
     roundCount: rounds.length,
     tablesPerRound: 4,
-    schedule: rounds.map((r) => r.tables),
-    byesByRound: rounds.map((r) => r.byes),
-    physicalTableByRound: rounds.map(() => [0, 1, 2, 3]),
+    schedule,
+    byesByRound,
+    physicalTableByRound: assignMovement(schedule, 4),
   };
 })();
 
