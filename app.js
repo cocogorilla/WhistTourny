@@ -320,8 +320,9 @@ function setupConfirmStep() {
       ? `<p class="muted">Two ways to run ${n}: more tables means everyone plays (and a longer night); fewer tables means rotating byes. Pick one — you can drop a table mid-game either way.</p>`
       : '';
   const nTables = formats.find((f) => f.id === selId).config.tablesPerRound;
-  const tnameInputs = Array.from({ length: nTables }, (_, i) =>
-    `<input type="text" class="tname" data-i="${i}" value="${esc(t.tableNames[i] ?? '')}" placeholder="Table ${i + 1}" />`
+  const tnameRows = Array.from({ length: nTables }, (_, i) =>
+    `<label class="tname-row"><span class="seat-num">${i + 1}</span>
+      <input type="text" class="tname" data-i="${i}" value="${esc(t.tableNames[i] ?? '')}" placeholder="Table ${i + 1}" /></label>`
   ).join('');
   return `
     <h2>Set up · Step 3 of 3 — Confirm the field</h2>
@@ -331,8 +332,8 @@ function setupConfirmStep() {
     </div>
     <div class="cards" style="margin-top:0.75rem">${opts}</div>
     <div class="card" style="margin-top:0.75rem">
-      <h3>Your ${nTables} tables</h3>
-      <div class="field">${tnameInputs}</div>
+      <h3>Name your ${nTables} tables</h3>
+      <div class="tname-list">${tnameRows}</div>
       <p class="muted">Name them (or just point) — last chance before tip-off.</p>
     </div>
     <div class="toolbar wizard-nav">
